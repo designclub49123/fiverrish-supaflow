@@ -1,0 +1,147 @@
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222 14% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 14% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 14% 9%;
+
+    --primary: 204 89% 38%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 210 20% 96%;
+    --secondary-foreground: 222 14% 9%;
+
+    --muted: 210 20% 96%;
+    --muted-foreground: 215 14% 40%;
+
+    --accent: 204 89% 94%;
+    --accent-foreground: 222 14% 9%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 210 50% 80%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5.3% 26.1%;
+    --sidebar-primary: 240 5.9% 10%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 4.8% 95.9%;
+    --sidebar-accent-foreground: 240 5.9% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 217.2 91.2% 59.8%;
+  }
+
+  .dark {
+    --background: 222 14% 9%;
+    --foreground: 210 40% 98%;
+
+    --card: 222 14% 12%;
+    --card-foreground: 210 40% 98%;
+
+    --popover: 222 14% 12%;
+    --popover-foreground: 210 40% 98%;
+
+    --primary: 204 80% 50%;
+    --primary-foreground: 210 40% 98%;
+
+    --secondary: 222 14% 15%;
+    --secondary-foreground: 210 40% 98%;
+
+    --muted: 222 14% 15%;
+    --muted-foreground: 215 14% 65%;
+
+    --accent: 204 70% 20%;
+    --accent-foreground: 210 40% 98%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+
+    --border: 222 14% 18%;
+    --input: 222 14% 18%;
+    --ring: 204 80% 40%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-md rounded-lg border border-white/20 shadow-glass;
+  }
+
+  .glass-card-dark {
+    @apply bg-black/50 backdrop-blur-md rounded-lg border border-white/10 shadow-glass;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-500;
+  }
+
+  .hover-effect {
+    @apply transition-all hover:scale-[1.02] active:scale-[0.98] duration-200;
+  }
+
+  .nav-link {
+    @apply relative px-1 py-2 text-muted-foreground hover:text-foreground transition-colors duration-200 after:content-[''] after:absolute after:w-full after:scale-x-0 after:h-0.5 after:bottom-0 after:left-0 after:bg-primary after:origin-bottom-right after:transition-transform after:duration-300 hover:after:scale-x-100 hover:after:origin-bottom-left;
+  }
+
+  .button-pulse {
+    @apply relative overflow-hidden after:absolute after:inset-0 after:bg-white/20 after:scale-x-0 after:origin-left hover:after:scale-x-100 after:transition-transform after:duration-500;
+  }
+}
+
+/* Animations for page transitions */
+.page-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 400ms, transform 400ms;
+}
+
+.page-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.page-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Lazy image loading with blur effect */
+.image-load {
+  filter: blur(10px);
+  transition: filter 0.5s ease-out;
+}
+
+.image-loaded {
+  filter: blur(0);
+}
