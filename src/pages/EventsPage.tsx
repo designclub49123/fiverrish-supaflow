@@ -1,217 +1,199 @@
 
-import { useState } from 'react';
-import StandardPage from '@/components/layout/StandardPage';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import Footer from '@/components/layout/Footer';
+import Navbar from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Calendar, MapPin, Users, ExternalLink, Calendar as CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { CalendarDays, Clock, MapPin, User, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+// Mock events data - in a real app, this would come from your database
+const events = [
+  {
+    id: '1',
+    title: 'Freelancer Networking Mixer',
+    description: 'Connect with other freelancers and potential clients in a relaxed setting.',
+    image: 'https://images.unsplash.com/photo-1528605248644-14dd04022da1?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjB8fG5ldHdvcmtpbmd8ZW58MHx8MHx8fDA%3D',
+    date: '2023-12-15',
+    time: '18:30 - 21:00',
+    location: 'Tech Hub, Mumbai',
+    category: 'Networking',
+    isVirtual: false,
+    attendeeCount: 45,
+    maxAttendees: 50
+  },
+  {
+    id: '2',
+    title: 'Mastering Digital Marketing Workshop',
+    description: 'Learn effective strategies to market your freelance services online.',
+    image: 'https://images.unsplash.com/photo-1551192866-2d38ae323a82?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8ZGlnaXRhbCUyMG1hcmtldGluZ3xlbnwwfHwwfHx8MA%3D%3D',
+    date: '2023-12-20',
+    time: '10:00 - 13:00',
+    location: 'Online',
+    category: 'Workshop',
+    isVirtual: true,
+    attendeeCount: 120,
+    maxAttendees: 200
+  },
+  {
+    id: '3',
+    title: 'Freelancer Success Stories: Panel Discussion',
+    description: 'Hear from successful freelancers about their journey and get inspired.',
+    image: 'https://images.unsplash.com/photo-1556761175-b413da4baf72?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjR8fGRpc2N1c3Npb258ZW58MHx8MHx8fDA%3D',
+    date: '2023-12-22',
+    time: '16:00 - 18:00',
+    location: 'Creative Space, Delhi',
+    category: 'Panel',
+    isVirtual: false,
+    attendeeCount: 35,
+    maxAttendees: 60
+  },
+  {
+    id: '4',
+    title: 'Web Development Bootcamp for Freelancers',
+    description: 'Intensive training on the latest web development technologies for freelancers.',
+    image: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8d2ViJTIwZGV2ZWxvcG1lbnR8ZW58MHx8MHx8fDA%3D',
+    date: '2024-01-10',
+    time: '09:00 - 17:00',
+    location: 'Online',
+    category: 'Workshop',
+    isVirtual: true,
+    attendeeCount: 90,
+    maxAttendees: 100
+  },
+  {
+    id: '5',
+    title: 'Freelancers Year-End Celebration',
+    description: 'Join us for a fun evening celebrating the achievements of our community members.',
+    image: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8M3x8Y2VsZWJyYXRpb258ZW58MHx8MHx8fDA%3D',
+    date: '2023-12-30',
+    time: '19:00 - 23:00',
+    location: 'Grand Hotel, Bangalore',
+    category: 'Networking',
+    isVirtual: false,
+    attendeeCount: 80,
+    maxAttendees: 100
+  }
+];
 
 export default function EventsPage() {
-  const [eventCategory, setEventCategory] = useState('all');
-  
-  const upcomingEvents = [
-    {
-      id: 1,
-      title: "Freelancer Growth Summit",
-      description: "A virtual conference featuring success stories and growth strategies from top freelancers.",
-      date: "July 15-16, 2025",
-      time: "9:00 AM - 5:00 PM EST",
-      location: "Virtual",
-      category: "conference",
-      attendees: 1250,
-      image: "https://via.placeholder.com/300x150"
-    },
-    {
-      id: 2,
-      title: "Portfolio Masterclass",
-      description: "Learn how to showcase your work effectively to attract high-quality clients.",
-      date: "July 22, 2025",
-      time: "2:00 PM - 4:00 PM EST",
-      location: "Virtual",
-      category: "workshop",
-      attendees: 350,
-      image: "https://via.placeholder.com/300x150"
-    },
-    {
-      id: 3,
-      title: "New York Freelancers Meetup",
-      description: "Network with fellow freelancers in the New York area and share experiences.",
-      date: "August 5, 2025",
-      time: "6:30 PM - 9:00 PM EST",
-      location: "New York, NY",
-      category: "meetup",
-      attendees: 75,
-      image: "https://via.placeholder.com/300x150"
-    }
-  ];
-  
-  const pastEvents = [
-    {
-      id: 101,
-      title: "Pricing Strategies for Freelancers",
-      description: "A workshop on how to price your services for maximum profitability and client satisfaction.",
-      date: "June 10, 2025",
-      time: "1:00 PM - 3:00 PM EST",
-      location: "Virtual",
-      category: "workshop",
-      attendees: 420,
-      image: "https://via.placeholder.com/300x150",
-      recording: true
-    },
-    {
-      id: 102,
-      title: "Digital Marketing for Freelancers",
-      description: "Learn effective strategies to market your services and attract more clients.",
-      date: "May 28, 2025",
-      time: "11:00 AM - 1:00 PM EST",
-      location: "Virtual",
-      category: "webinar",
-      attendees: 560,
-      image: "https://via.placeholder.com/300x150",
-      recording: true
-    }
-  ];
-  
-  const filteredUpcoming = eventCategory === 'all' 
-    ? upcomingEvents 
-    : upcomingEvents.filter(event => event.category === eventCategory);
-    
-  const filteredPast = eventCategory === 'all' 
-    ? pastEvents 
-    : pastEvents.filter(event => event.category === eventCategory);
-
   return (
-    <StandardPage 
-      title="Events" 
-      subtitle="Join our community events to learn, connect, and grow your freelance business"
-    >
-      <div className="mb-8">
-        <Tabs defaultValue="upcoming" className="w-full">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+    <div className="min-h-screen flex flex-col">
+      <Navbar />
+      <div className="pt-20 flex-grow">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl md:text-4xl font-bold">Events</h1>
+            <p className="text-muted-foreground mt-2">
+              Join Grew up events to learn, connect, and grow your network
+            </p>
+          </div>
+
+          <Tabs defaultValue="upcoming" className="mb-10">
             <TabsList>
-              <TabsTrigger value="upcoming">Upcoming Events</TabsTrigger>
-              <TabsTrigger value="past">Past Events</TabsTrigger>
+              <TabsTrigger value="upcoming">Upcoming</TabsTrigger>
+              <TabsTrigger value="past">Past</TabsTrigger>
+              <TabsTrigger value="my-events">My Events</TabsTrigger>
             </TabsList>
             
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setEventCategory('all')} className={eventCategory === 'all' ? 'bg-primary/10' : ''}>
-                All
-              </Button>
-              <Button variant="outline" onClick={() => setEventCategory('conference')} className={eventCategory === 'conference' ? 'bg-primary/10' : ''}>
-                Conferences
-              </Button>
-              <Button variant="outline" onClick={() => setEventCategory('workshop')} className={eventCategory === 'workshop' ? 'bg-primary/10' : ''}>
-                Workshops
-              </Button>
-              <Button variant="outline" onClick={() => setEventCategory('meetup')} className={eventCategory === 'meetup' ? 'bg-primary/10' : ''}>
-                Meetups
+            <TabsContent value="upcoming" className="mt-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {events.map((event) => (
+                  <Card key={event.id} className="overflow-hidden flex flex-col h-full">
+                    <div className="h-48 overflow-hidden relative">
+                      <img 
+                        src={event.image} 
+                        alt={event.title} 
+                        className="w-full h-full object-cover transition-transform hover:scale-105 duration-300"
+                      />
+                      <div className="absolute top-2 right-2">
+                        <Badge variant={event.isVirtual ? "secondary" : "default"}>
+                          {event.isVirtual ? 'Virtual' : 'In Person'}
+                        </Badge>
+                      </div>
+                    </div>
+                    <CardContent className="flex-grow flex flex-col p-6">
+                      <div className="mb-3">
+                        <span className="px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-medium">
+                          {event.category}
+                        </span>
+                      </div>
+                      <CardTitle className="mb-2">
+                        <Link to={`/events/${event.id}`} className="hover:text-primary transition-colors">
+                          {event.title}
+                        </Link>
+                      </CardTitle>
+                      <CardDescription className="flex-grow mb-4">
+                        {event.description}
+                      </CardDescription>
+                      
+                      <div className="space-y-2 mt-auto">
+                        <div className="flex items-center text-sm">
+                          <CalendarDays className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>{format(new Date(event.date), 'MMMM dd, yyyy')}</span>
+                        </div>
+                        <div className="flex items-center text-sm">
+                          <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>{event.time}</span>
+                        </div>
+                        <div className="flex items-center text-sm">
+                          <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                          <span>{event.location}</span>
+                        </div>
+                        <div className="flex items-center justify-between mt-2 pt-2 border-t border-border">
+                          <div className="flex items-center text-sm">
+                            <Users className="h-4 w-4 mr-2 text-muted-foreground" />
+                            <span>{event.attendeeCount}/{event.maxAttendees} attendees</span>
+                          </div>
+                          <Button size="sm">
+                            {event.attendeeCount >= event.maxAttendees ? 'Join Waitlist' : 'RSVP'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="past">
+              <div className="text-center py-10">
+                <h3 className="text-lg font-medium mb-2">No past events</h3>
+                <p className="text-muted-foreground">
+                  Check back later for recordings and materials from previous events
+                </p>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="my-events">
+              <div className="text-center py-10">
+                <h3 className="text-lg font-medium mb-2">You haven't registered for any events yet</h3>
+                <p className="text-muted-foreground mb-4">
+                  Browse our upcoming events and RSVP to join
+                </p>
+                <Button>Explore Events</Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+          
+          <div className="bg-secondary/50 p-6 md:p-8 rounded-lg mt-12">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
+              <div>
+                <h2 className="text-xl md:text-2xl font-bold mb-2">Want to host your own event?</h2>
+                <p className="text-muted-foreground">
+                  Share your knowledge with the Grew up community
+                </p>
+              </div>
+              <Button size="lg">
+                Submit Event Proposal
               </Button>
             </div>
           </div>
-          
-          <TabsContent value="upcoming">
-            {filteredUpcoming.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredUpcoming.map((event) => (
-                  <Card key={event.id}>
-                    <img src={event.image} alt={event.title} className="w-full h-40 object-cover" />
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-xl">{event.title}</CardTitle>
-                        <Badge>{event.category}</Badge>
-                      </div>
-                      <CardDescription>{event.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pb-2">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span>{event.date}, {event.time}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span>{event.location}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span>{event.attendees} attendees</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                    <CardFooter>
-                      <Button className="w-full">Register Now</Button>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <CalendarIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No events found</h3>
-                <p className="text-muted-foreground mb-6">
-                  There are no upcoming events in this category. Check back later or view all events.
-                </p>
-                <Button variant="outline" onClick={() => setEventCategory('all')}>View All Events</Button>
-              </div>
-            )}
-          </TabsContent>
-          
-          <TabsContent value="past">
-            {filteredPast.length > 0 ? (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredPast.map((event) => (
-                  <Card key={event.id}>
-                    <img src={event.image} alt={event.title} className="w-full h-40 object-cover opacity-80" />
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-start">
-                        <CardTitle className="text-xl">{event.title}</CardTitle>
-                        <Badge variant="outline">{event.category}</Badge>
-                      </div>
-                      <CardDescription>{event.description}</CardDescription>
-                    </CardHeader>
-                    <CardContent className="pb-2">
-                      <div className="space-y-2 text-sm">
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span>{event.date}, {event.time}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span>{event.location}</span>
-                        </div>
-                        <div className="flex items-center">
-                          <Users className="h-4 w-4 mr-2 text-muted-foreground" />
-                          <span>{event.attendees} attended</span>
-                        </div>
-                      </div>
-                    </CardContent>
-                    <CardFooter>
-                      {event.recording ? (
-                        <Button variant="outline" className="w-full">
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Watch Recording
-                        </Button>
-                      ) : (
-                        <Button variant="outline" className="w-full" disabled>Event Ended</Button>
-                      )}
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <CalendarIcon className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No past events found</h3>
-                <p className="text-muted-foreground mb-6">
-                  There are no past events in this category. Try viewing all events instead.
-                </p>
-                <Button variant="outline" onClick={() => setEventCategory('all')}>View All Events</Button>
-              </div>
-            )}
-          </TabsContent>
-        </Tabs>
+        </div>
       </div>
-    </StandardPage>
+      <Footer />
+    </div>
   );
 }

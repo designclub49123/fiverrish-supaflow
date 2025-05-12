@@ -37,8 +37,8 @@ export default function Footer() {
   const support = [
     { name: "Help & Support", path: "/help" },
     { name: "Trust & Safety", path: "/trust" },
-    { name: "Selling on Fiverrish", path: "/selling" },
-    { name: "Buying on Fiverrish", path: "/buying" },
+    { name: "Selling on Grew up", path: "/selling" },
+    { name: "Buying on Grew up", path: "/buying" },
   ];
 
   const community = [
@@ -56,7 +56,7 @@ export default function Footer() {
           <div className="col-span-1 xl:col-span-1">
             <Link to="/" className="inline-block mb-6">
               <span className="text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-500">
-                Fiverrish
+                Grew up
               </span>
             </Link>
             <p className="text-muted-foreground mb-6 text-sm">
@@ -134,7 +134,7 @@ export default function Footer() {
         <div className="flex flex-col md:flex-row justify-between items-center pt-8 border-t border-border">
           <div className="flex items-center mb-4 md:mb-0">
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} Fiverrish. All rights reserved.
+              © {new Date().getFullYear()} Grew up. All rights reserved.
             </p>
           </div>
 

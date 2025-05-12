@@ -1,256 +1,231 @@
 
 import { useState } from 'react';
-import StandardPage from '@/components/layout/StandardPage';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import Footer from '@/components/layout/Footer';
+import Navbar from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { formatDistanceToNow } from 'date-fns';
+import { MessageSquare, Search, Star, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Search, MessageSquare, Users, TrendingUp, Clock } from 'lucide-react';
+
+// Mock forum data - in a real app, this would come from your database
+const forumThreads = [
+  {
+    id: '1',
+    title: 'How do I get my first client as a beginner?',
+    category: 'Getting Started',
+    author: {
+      name: 'Alex Johnson',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MTJ8fHBvcnRyYWl0fGVufDB8fDB8fHww',
+      level: 'Newbie'
+    },
+    date: '2023-11-18T14:22:00Z',
+    replies: 12,
+    views: 234,
+    pinned: true
+  },
+  {
+    id: '2',
+    title: 'Tips for creating an outstanding portfolio that gets you noticed',
+    category: 'Portfolio Building',
+    author: {
+      name: 'Sophia Chen',
+      avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8MjB8fHBvcnRyYWl0fGVufDB8fDB8fHww',
+      level: 'Established'
+    },
+    date: '2023-11-17T09:14:00Z',
+    replies: 23,
+    views: 512,
+    pinned: false
+  },
+  {
+    id: '3',
+    title: 'Dealing with difficult clients - advice needed',
+    category: 'Client Relations',
+    author: {
+      name: 'James Wilson',
+      avatar: 'https://images.unsplash.com/photo-1552058544-f2b08422138a?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8N3x8cGVyc29ufGVufDB8fDB8fHww',
+      level: 'Pro'
+    },
+    date: '2023-11-16T16:45:00Z',
+    replies: 34,
+    views: 678,
+    pinned: false
+  },
+  {
+    id: '4',
+    title: 'What's your pricing strategy for design services?',
+    category: 'Business',
+    author: {
+      name: 'Emma Davis',
+      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&auto=format&fit=crop&q=60&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8OHx8cG9ydHJhaXR8ZW58MHx8MHx8fDA%3D',
+      level: 'Veteran'
+    },
+    date: '2023-11-15T08:30:00Z',
+    replies: 45,
+    views: 823,
+    pinned: false
+  },
+  {
+    id: '5',
+    title: 'Recent updates to platform - discussion thread',
+    category: 'Platform Updates',
+    author: {
+      name: 'Admin',
+      avatar: '',
+      level: 'Staff'
+    },
+    date: '2023-11-14T10:22:00Z',
+    replies: 16,
+    views: 1203,
+    pinned: true
+  }
+];
+
+const categories = [
+  'All Categories',
+  'Getting Started',
+  'Portfolio Building',
+  'Client Relations',
+  'Business',
+  'Platform Updates',
+  'Technical',
+  'Showcase'
+];
 
 export default function ForumPage() {
+  const [filter, setFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-
-  const discussionThreads = [
-    {
-      id: 1,
-      title: "Tips for creating an eye-catching gig thumbnail",
-      author: "DesignPro",
-      replies: 24,
-      views: 342,
-      lastActivity: "2 hours ago",
-      category: "Seller Tips",
-      tags: ["Design", "Marketing", "Thumbnails"]
-    },
-    {
-      id: 2,
-      title: "How to handle scope creep from clients",
-      author: "FreelanceGuru",
-      replies: 37,
-      views: 512,
-      lastActivity: "5 hours ago",
-      category: "Client Management",
-      tags: ["Clients", "Boundaries", "Pricing"]
-    },
-    {
-      id: 3,
-      title: "What's your favorite productivity tool?",
-      author: "ProductivityQueen",
-      replies: 45,
-      views: 678,
-      lastActivity: "1 day ago",
-      category: "Tools & Resources",
-      tags: ["Tools", "Productivity", "Software"]
-    },
-    {
-      id: 4,
-      title: "Finding your niche as a new freelancer",
-      author: "NewbieCoder",
-      replies: 19,
-      views: 256,
-      lastActivity: "2 days ago",
-      category: "Getting Started",
-      tags: ["Beginners", "Strategy", "Niche"]
-    },
-    {
-      id: 5,
-      title: "Share your freelancing success story!",
-      author: "SuccessStory",
-      replies: 52,
-      views: 843,
-      lastActivity: "3 days ago",
-      category: "Success Stories",
-      tags: ["Inspiration", "Growth", "Celebration"]
-    }
-  ];
-
-  const announcementThreads = [
-    {
-      id: 101,
-      title: "New Feature: Enhanced Portfolio Options",
-      author: "Fiverrish Team",
-      replies: 15,
-      views: 1245,
-      lastActivity: "1 day ago",
-      category: "Platform Updates",
-      tags: ["New Features", "Portfolio"]
-    },
-    {
-      id: 102,
-      title: "Upcoming Maintenance: July 15th",
-      author: "Fiverrish Team",
-      replies: 8,
-      views: 986,
-      lastActivity: "2 days ago",
-      category: "Announcements",
-      tags: ["Maintenance", "Downtime"]
-    }
-  ];
-
-  const filteredDiscussions = searchQuery
-    ? discussionThreads.filter(thread => 
-        thread.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        thread.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        thread.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : discussionThreads;
-
-  const filteredAnnouncements = searchQuery
-    ? announcementThreads.filter(thread => 
-        thread.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        thread.author.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        thread.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : announcementThreads;
-
-  const ThreadCard = ({ thread }) => (
-    <Card className="mb-4">
-      <CardHeader className="pb-2">
-        <div className="flex justify-between">
-          <div>
-            <CardTitle className="text-lg">{thread.title}</CardTitle>
-            <CardDescription>Posted by {thread.author} • {thread.lastActivity}</CardDescription>
+  const [selectedCategory, setSelectedCategory] = useState('All Categories');
+  
+  return (
+    <div className="min-h-screen flex flex-col">
+      <Navbar />
+      <div className="pt-20 flex-grow">
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-8">
+            <h1 className="text-3xl md:text-4xl font-bold">Community Forum</h1>
+            <p className="text-muted-foreground mt-2">
+              Connect, learn, and grow with other Grew up users
+            </p>
           </div>
-          <Badge variant="outline">{thread.category}</Badge>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex justify-between items-center">
-          <div className="flex gap-4 text-sm text-muted-foreground">
-            <div className="flex items-center">
-              <MessageSquare className="h-4 w-4 mr-1" />
-              {thread.replies} replies
+
+          <div className="flex flex-col md:flex-row gap-4 mb-8">
+            <div className="w-full md:w-3/4 flex flex-col md:flex-row gap-4">
+              <div className="relative flex-grow">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search topics..."
+                  className="pl-9 w-full"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+                <SelectTrigger className="w-full md:w-[200px]">
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((category) => (
+                    <SelectItem key={category} value={category}>
+                      {category}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="flex items-center">
-              <Users className="h-4 w-4 mr-1" />
-              {thread.views} views
-            </div>
+            <Button className="w-full md:w-auto">
+              Start New Topic
+            </Button>
           </div>
-          <div className="flex gap-2">
-            {thread.tags.map((tag, index) => (
-              <Badge key={index} variant="secondary">{tag}</Badge>
+
+          <Tabs defaultValue="latest" className="mb-6">
+            <TabsList>
+              <TabsTrigger value="latest" onClick={() => setFilter('all')}>
+                Latest
+              </TabsTrigger>
+              <TabsTrigger value="popular" onClick={() => setFilter('popular')}>
+                Popular
+              </TabsTrigger>
+              <TabsTrigger value="unanswered" onClick={() => setFilter('unanswered')}>
+                Unanswered
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          
+          <div className="space-y-4">
+            {forumThreads.map((thread) => (
+              <Card key={thread.id} className={`hover:bg-secondary/50 transition-colors ${thread.pinned ? 'border-primary/30' : ''}`}>
+                <CardContent className="p-5">
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="md:w-[50px] flex flex-row md:flex-col items-center justify-start md:justify-center space-x-3 md:space-x-0 md:space-y-1">
+                      <Button variant="ghost" size="sm" className="px-1 md:px-2">
+                        <Star className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                      <div className="text-center">
+                        <div className="text-lg font-bold">{thread.replies}</div>
+                        <div className="text-xs text-muted-foreground">replies</div>
+                      </div>
+                    </div>
+                    
+                    <div className="flex-grow">
+                      <div className="flex items-start justify-between flex-wrap gap-2">
+                        <div>
+                          <Link 
+                            to={`/forum/${thread.id}`} 
+                            className="text-lg font-semibold hover:text-primary transition-colors line-clamp-2 mb-1"
+                          >
+                            {thread.title}
+                          </Link>
+                          <div className="flex items-center flex-wrap gap-2 text-sm">
+                            <Badge variant="secondary">{thread.category}</Badge>
+                            <span className="text-muted-foreground text-xs">
+                              {formatDistanceToNow(new Date(thread.date), { addSuffix: true })}
+                            </span>
+                            {thread.pinned && (
+                              <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                                Pinned
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-center text-sm text-muted-foreground">
+                          <Users className="h-4 w-4 mr-1" />
+                          <span>{thread.views} views</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center mt-2 md:mt-0">
+                      <Avatar className="h-8 w-8">
+                        <AvatarImage src={thread.author.avatar} />
+                        <AvatarFallback>{thread.author.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div className="ml-2">
+                        <div className="text-sm font-medium">{thread.author.name}</div>
+                        <div className="text-xs text-muted-foreground">{thread.author.level}</div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             ))}
           </div>
+          
+          <div className="mt-8 text-center">
+            <Button variant="outline">
+              Load More Topics
+            </Button>
+          </div>
         </div>
-      </CardContent>
-    </Card>
-  );
-
-  return (
-    <StandardPage 
-      title="Community Forum" 
-      subtitle="Connect with other freelancers and clients to share knowledge and experiences"
-    >
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div className="relative flex-grow max-w-md">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            type="text"
-            placeholder="Search discussions..."
-            className="pl-9"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
-        <Button>Start New Discussion</Button>
       </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-        <Card className="p-4 flex items-center">
-          <MessageSquare className="h-8 w-8 text-primary mr-3" />
-          <div>
-            <p className="text-2xl font-bold">1,245</p>
-            <p className="text-sm text-muted-foreground">Discussions</p>
-          </div>
-        </Card>
-        
-        <Card className="p-4 flex items-center">
-          <Users className="h-8 w-8 text-primary mr-3" />
-          <div>
-            <p className="text-2xl font-bold">8,752</p>
-            <p className="text-sm text-muted-foreground">Community Members</p>
-          </div>
-        </Card>
-        
-        <Card className="p-4 flex items-center">
-          <TrendingUp className="h-8 w-8 text-primary mr-3" />
-          <div>
-            <p className="text-2xl font-bold">32,148</p>
-            <p className="text-sm text-muted-foreground">Posts This Month</p>
-          </div>
-        </Card>
-        
-        <Card className="p-4 flex items-center">
-          <Clock className="h-8 w-8 text-primary mr-3" />
-          <div>
-            <p className="text-2xl font-bold">15 mins</p>
-            <p className="text-sm text-muted-foreground">Avg. Response Time</p>
-          </div>
-        </Card>
-      </div>
-
-      <Tabs defaultValue="discussions">
-        <TabsList className="mb-6">
-          <TabsTrigger value="discussions">Discussions</TabsTrigger>
-          <TabsTrigger value="announcements">Announcements</TabsTrigger>
-          <TabsTrigger value="unanswered">Unanswered</TabsTrigger>
-          <TabsTrigger value="popular">Popular</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="discussions">
-          <div className="space-y-2">
-            {filteredDiscussions.length > 0 ? (
-              filteredDiscussions.map(thread => (
-                <ThreadCard key={thread.id} thread={thread} />
-              ))
-            ) : (
-              <div className="text-center py-10">
-                <h3 className="text-lg font-medium mb-2">No discussions found</h3>
-                <p className="text-muted-foreground">
-                  Try adjusting your search terms or start a new discussion.
-                </p>
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="announcements">
-          <div className="space-y-2">
-            {filteredAnnouncements.length > 0 ? (
-              filteredAnnouncements.map(thread => (
-                <ThreadCard key={thread.id} thread={thread} />
-              ))
-            ) : (
-              <div className="text-center py-10">
-                <h3 className="text-lg font-medium mb-2">No announcements found</h3>
-                <p className="text-muted-foreground">
-                  Try adjusting your search terms or check back later.
-                </p>
-              </div>
-            )}
-          </div>
-        </TabsContent>
-
-        <TabsContent value="unanswered">
-          <div className="text-center py-10">
-            <h3 className="text-lg font-medium mb-2">Help the community</h3>
-            <p className="text-muted-foreground mb-6">
-              These discussions need your expertise. Share your knowledge with others!
-            </p>
-            <Button>View Unanswered Discussions</Button>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="popular">
-          <div className="text-center py-10">
-            <h3 className="text-lg font-medium mb-2">Trending Discussions</h3>
-            <p className="text-muted-foreground mb-6">
-              See what topics are popular in the community right now.
-            </p>
-            <Button>View Popular Discussions</Button>
-          </div>
-        </TabsContent>
-      </Tabs>
-    </StandardPage>
+      <Footer />
+    </div>
   );
 }

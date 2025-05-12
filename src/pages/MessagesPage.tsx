@@ -1,241 +1,250 @@
+
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
-import { useToast } from '@/components/ui/use-toast';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Separator } from '@/components/ui/separator';
-import { format } from 'date-fns';
-import { Send, Info, MessageSquare } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from '@/components/ui/use-toast';
+import { Search, Send, MoreHorizontal, Clock } from 'lucide-react';
 
 interface Message {
   id: string;
   content: string;
+  created_at: string;
   sender_id: string;
   receiver_id: string;
   order_id: string | null;
   is_read: boolean;
-  created_at: string;
-  sender?: {
-    username: string;
-    full_name: string | null;
-    avatar_url: string | null;
-  };
-  receiver?: {
-    username: string;
-    full_name: string | null;
-    avatar_url: string | null;
-  };
 }
 
-interface Conversation {
-  userId: string;
-  username: string;
-  fullName: string | null;
-  avatarUrl: string | null;
-  lastMessage: string;
-  lastMessageDate: string;
-  unreadCount: number;
+interface User {
+  id: string;
+  name: string;
+  avatar: string;
+  status: 'online' | 'offline' | 'away';
+  lastMessage?: string;
+  lastMessageTime?: string;
+  unreadCount?: number;
 }
 
 export default function MessagesPage() {
-  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentUser, setCurrentUser] = useState<string | null>(null);
+  const [contacts, setContacts] = useState<User[]>([]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const [selectedUser, setSelectedUser] = useState<string | null>(null);
-  const [selectedUserDetails, setSelectedUserDetails] = useState<{
-    username: string;
-    fullName: string | null;
-    avatarUrl: string | null;
-  } | null>(null);
-  const { toast } = useToast();
-  const navigate = useNavigate();
+  const [selectedContact, setSelectedContact] = useState<User | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [loadingContacts, setLoadingContacts] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
+  // Get current user on component mount
   useEffect(() => {
-    checkAuthStatus();
+    const fetchCurrentUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        setCurrentUser(session.user.id);
+        fetchContacts(session.user.id);
+      }
+    };
+
+    fetchCurrentUser();
   }, []);
 
+  // Establish realtime subscription
   useEffect(() => {
-    if (currentUserId) {
-      fetchConversations();
-      const messagesSubscription = supabase
-        .channel('public:messages')
-        .on('postgres_changes', {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'messages',
-        }, (payload) => {
-          const newMsg = payload.new as Message;
-          if (
-            (newMsg.sender_id === currentUserId || newMsg.receiver_id === currentUserId) &&
-            (newMsg.sender_id === selectedUser || newMsg.receiver_id === selectedUser)
-          ) {
-            fetchMessages(selectedUser);
-          } else if (newMsg.receiver_id === currentUserId) {
-            fetchConversations();
+    if (!currentUser) return;
+
+    const setupRealtimeSubscription = () => {
+      const channel = supabase
+        .channel('messages-channel')
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'messages',
+            filter: `receiver_id=eq.${currentUser}`,
+          },
+          (payload) => {
+            const newMessage = payload.new as Message;
+            
+            // Update messages if the current conversation is open
+            if (selectedContact && newMessage.sender_id === selectedContact.id) {
+              setMessages((prev) => [...prev, newMessage]);
+              markMessageAsRead(newMessage.id);
+            }
+            
+            // Update contacts with new message info
+            updateContactWithNewMessage(newMessage);
           }
-        })
+        )
         .subscribe();
 
       return () => {
-        supabase.removeChannel(messagesSubscription);
+        supabase.removeChannel(channel);
       };
-    }
-  }, [currentUserId, selectedUser]);
+    };
+    
+    let subscription = setupRealtimeSubscription();
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+    
+    // Reconnect logic for realtime subscription
+    const handleConnectionStatus = () => {
+      if (reconnectAttempts < 5) {
+        reconnectTimer = setTimeout(() => {
+          console.log('Attempting to reconnect realtime subscription...');
+          subscription = setupRealtimeSubscription();
+          setReconnectAttempts(prev => prev + 1);
+        }, 3000 * (reconnectAttempts + 1)); // Exponential backoff
+      }
+    };
 
+    return () => {
+      if (subscription && typeof subscription === 'function') {
+        subscription();
+      }
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+    };
+  }, [currentUser, selectedContact, reconnectAttempts]);
+
+  // Scroll to bottom when messages change
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const checkAuthStatus = async () => {
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
-      toast({
-        title: "Authentication required",
-        description: "Please sign in to view your messages",
-      });
-      navigate('/auth');
-      return;
-    }
-    setCurrentUserId(data.session.user.id);
-  };
-
-  const fetchConversations = async () => {
-    if (!currentUserId) return;
-    
+  const fetchContacts = async (userId: string) => {
     try {
-      setLoading(true);
-      
-      // Get all messages where the current user is either sender or receiver
-      const { data: messagesData, error: messagesError } = await supabase
+      // First, get all conversations where the current user is involved
+      const { data: sentMessages, error: sentError } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:profiles!sender_id(username, full_name, avatar_url),
-          receiver:profiles!receiver_id(username, full_name, avatar_url)
-        `)
-        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
+        .select('receiver_id, content, created_at, is_read')
+        .eq('sender_id', userId)
         .order('created_at', { ascending: false });
-        
-      if (messagesError) throw messagesError;
       
-      if (!messagesData || messagesData.length === 0) {
-        setConversations([]);
-        setLoading(false);
-        return;
-      }
+      if (sentError) throw sentError;
       
-      // Process messages to create conversation list
-      const conversationsMap = new Map<string, Conversation>();
+      const { data: receivedMessages, error: receivedError } = await supabase
+        .from('messages')
+        .select('sender_id, content, created_at, is_read')
+        .eq('receiver_id', userId)
+        .order('created_at', { ascending: false });
       
-      messagesData.forEach((message: any) => {
-        // Determine the other user in the conversation
-        const isUserSender = message.sender_id === currentUserId;
-        const otherUserId = isUserSender ? message.receiver_id : message.sender_id;
-        const otherUserData = isUserSender ? message.receiver : message.sender;
-        
-        if (!otherUserId || !otherUserData) return;
-        
-        const existingConversation = conversationsMap.get(otherUserId);
-        
-        // Count unread messages
-        const isUnread = !message.is_read && message.receiver_id === currentUserId;
-        
-        if (existingConversation) {
-          // Update only if this message is newer
-          const existingDate = new Date(existingConversation.lastMessageDate).getTime();
-          const messageDate = new Date(message.created_at).getTime();
-          
-          if (messageDate > existingDate) {
-            existingConversation.lastMessage = message.content;
-            existingConversation.lastMessageDate = message.created_at;
-          }
-          
-          if (isUnread) {
-            existingConversation.unreadCount += 1;
-          }
-        } else {
-          // Create new conversation entry
-          conversationsMap.set(otherUserId, {
-            userId: otherUserId,
-            username: otherUserData.username,
-            fullName: otherUserData.full_name,
-            avatarUrl: otherUserData.avatar_url,
-            lastMessage: message.content,
-            lastMessageDate: message.created_at,
-            unreadCount: isUnread ? 1 : 0
+      if (receivedError) throw receivedError;
+      
+      // Combine and find unique contacts
+      const uniqueContacts = new Map<string, any>();
+      
+      sentMessages?.forEach(msg => {
+        if (!uniqueContacts.has(msg.receiver_id)) {
+          uniqueContacts.set(msg.receiver_id, {
+            id: msg.receiver_id,
+            lastMessage: msg.content,
+            lastMessageTime: msg.created_at,
+            unreadCount: 0
           });
         }
       });
       
-      // Sort conversations by last message date
-      const sortedConversations = Array.from(conversationsMap.values())
-        .sort((a, b) => new Date(b.lastMessageDate).getTime() - new Date(a.lastMessageDate).getTime());
+      receivedMessages?.forEach(msg => {
+        const unreadCount = msg.is_read ? 0 : 1;
+        
+        if (!uniqueContacts.has(msg.sender_id)) {
+          uniqueContacts.set(msg.sender_id, {
+            id: msg.sender_id,
+            lastMessage: msg.content,
+            lastMessageTime: msg.created_at,
+            unreadCount
+          });
+        } else {
+          // If this is a more recent message, update the last message info
+          const existing = uniqueContacts.get(msg.sender_id);
+          if (new Date(msg.created_at) > new Date(existing.lastMessageTime)) {
+            existing.lastMessage = msg.content;
+            existing.lastMessageTime = msg.created_at;
+          }
+          existing.unreadCount = (existing.unreadCount || 0) + unreadCount;
+        }
+      });
       
-      setConversations(sortedConversations);
+      // Now fetch user info for these contacts
+      const contactPromises = Array.from(uniqueContacts.values()).map(async contact => {
+        const { data: userData, error: userError } = await supabase
+          .from('profiles')
+          .select('full_name, username, avatar_url')
+          .eq('id', contact.id)
+          .single();
+        
+        if (userError) {
+          console.error('Error fetching user info:', userError);
+          return {
+            ...contact,
+            name: 'Unknown User',
+            avatar: '',
+            status: 'offline' as const
+          };
+        }
+        
+        return {
+          ...contact,
+          name: userData?.full_name || userData?.username || 'Unknown User',
+          avatar: userData?.avatar_url || '',
+          status: 'online' as const // This would be determined by a separate online status system
+        };
+      });
       
-      // If no conversation is selected yet and we have conversations, select the first one
-      if (!selectedUser && sortedConversations.length > 0) {
-        setSelectedUser(sortedConversations[0].userId);
-        setSelectedUserDetails({
-          username: sortedConversations[0].username,
-          fullName: sortedConversations[0].fullName,
-          avatarUrl: sortedConversations[0].avatarUrl
-        });
-        fetchMessages(sortedConversations[0].userId);
-      }
+      const resolvedContacts = await Promise.all(contactPromises);
+      setContacts(resolvedContacts.sort((a, b) => 
+        new Date(b.lastMessageTime).getTime() - new Date(a.lastMessageTime).getTime()
+      ));
       
     } catch (error) {
-      console.error('Error fetching conversations:', error);
+      console.error('Error fetching contacts:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to load conversations. Please try again.",
+        description: "Failed to load contacts. Please refresh the page.",
       });
     } finally {
-      setLoading(false);
+      setLoadingContacts(false);
     }
   };
 
-  const fetchMessages = async (userId: string) => {
-    if (!currentUserId) return;
+  const fetchMessages = async (contactId: string) => {
+    if (!currentUser) return;
     
+    setLoadingMessages(true);
     try {
+      // Get messages between current user and selected contact
       const { data, error } = await supabase
         .from('messages')
-        .select(`
-          *,
-          sender:profiles!sender_id(username, full_name, avatar_url),
-          receiver:profiles!receiver_id(username, full_name, avatar_url)
-        `)
-        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${userId}),and(sender_id.eq.${userId},receiver_id.eq.${currentUserId})`)
+        .select('*')
+        .or(`and(sender_id.eq.${currentUser},receiver_id.eq.${contactId}),and(sender_id.eq.${contactId},receiver_id.eq.${currentUser})`)
         .order('created_at', { ascending: true });
       
       if (error) throw error;
       
       setMessages(data || []);
       
-      // Mark received messages as read
-      const unreadMessages = data
-        ?.filter(msg => msg.receiver_id === currentUserId && !msg.is_read)
-        .map(msg => msg.id);
+      // Mark unread messages as read
+      const unreadMessages = data?.filter(msg => 
+        msg.receiver_id === currentUser && !msg.is_read
+      ) || [];
       
-      if (unreadMessages && unreadMessages.length > 0) {
-        await supabase
-          .from('messages')
-          .update({ is_read: true })
-          .in('id', unreadMessages);
-          
-        // Refresh conversations list to update unread counts
-        fetchConversations();
+      for (const msg of unreadMessages) {
+        await markMessageAsRead(msg.id);
       }
+      
+      // Update unread count for this contact
+      setContacts(contacts => contacts.map(contact => 
+        contact.id === contactId ? { ...contact, unreadCount: 0 } : contact
+      ));
+      
     } catch (error) {
       console.error('Error fetching messages:', error);
       toast({
@@ -243,30 +252,43 @@ export default function MessagesPage() {
         title: "Error",
         description: "Failed to load messages. Please try again.",
       });
+    } finally {
+      setLoadingMessages(false);
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!newMessage.trim() || !currentUserId || !selectedUser) return;
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !currentUser || !selectedContact) return;
     
     try {
-      const { error } = await supabase
+      const newMessageObj = {
+        sender_id: currentUser,
+        receiver_id: selectedContact.id,
+        content: newMessage.trim(),
+        is_read: false
+      };
+      
+      const { data, error } = await supabase
         .from('messages')
-        .insert({
-          content: newMessage.trim(),
-          sender_id: currentUserId,
-          receiver_id: selectedUser,
-          is_read: false
-        });
+        .insert(newMessageObj)
+        .select();
       
       if (error) throw error;
       
+      setMessages((prev) => [...prev, data[0]]);
       setNewMessage('');
       
-      // Fetch updated message list
-      fetchMessages(selectedUser);
+      // Update the contact's last message
+      setContacts(contacts => contacts.map(contact => 
+        contact.id === selectedContact.id 
+          ? { 
+              ...contact, 
+              lastMessage: newMessage.trim(),
+              lastMessageTime: new Date().toISOString()
+            } 
+          : contact
+      ));
+      
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -276,210 +298,307 @@ export default function MessagesPage() {
       });
     }
   };
-  
-  const selectConversation = (userId: string, username: string, fullName: string | null, avatarUrl: string | null) => {
-    setSelectedUser(userId);
-    setSelectedUserDetails({
-      username,
-      fullName,
-      avatarUrl
+
+  const markMessageAsRead = async (messageId: string) => {
+    try {
+      const { error } = await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('id', messageId);
+      
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+    }
+  };
+
+  const updateContactWithNewMessage = (newMessage: Message) => {
+    setContacts(prev => {
+      const updatedContacts = [...prev];
+      const contactIndex = updatedContacts.findIndex(c => c.id === newMessage.sender_id);
+      
+      if (contactIndex >= 0) {
+        // Update existing contact
+        updatedContacts[contactIndex] = {
+          ...updatedContacts[contactIndex],
+          lastMessage: newMessage.content,
+          lastMessageTime: newMessage.created_at,
+          unreadCount: 
+            selectedContact && selectedContact.id === newMessage.sender_id
+              ? updatedContacts[contactIndex].unreadCount || 0
+              : (updatedContacts[contactIndex].unreadCount || 0) + 1
+        };
+      } else {
+        // This is a new contact, we should fetch their info
+        // In a real app, you'd want to fetch the user info here
+        // For simplicity, we'll use placeholder data and handle this in a re-fetch
+        fetchContacts(currentUser!);
+      }
+      
+      // Sort by most recent message
+      return updatedContacts.sort((a, b) => 
+        new Date(b.lastMessageTime || '').getTime() - new Date(a.lastMessageTime || '').getTime()
+      );
     });
-    fetchMessages(userId);
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const handleContactSelect = (contact: User) => {
+    setSelectedContact(contact);
+    fetchMessages(contact.id);
   };
 
-  const formatMessageDate = (dateString: string) => {
-    const messageDate = new Date(dateString);
+  const filteredContacts = contacts.filter(contact => 
+    contact.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const formatTime = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  const formatMessageDate = (timestamp: string) => {
+    const date = new Date(timestamp);
     const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
     
-    if (messageDate.toDateString() === today.toDateString()) {
-      // Today, show time only
-      return format(messageDate, 'h:mm a');
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
     } else {
-      // Not today, show date and time
-      return format(messageDate, 'MMM d, h:mm a');
+      return date.toLocaleDateString();
     }
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
-      </div>
-
-      <Card className="overflow-hidden">
-        <div className="grid md:grid-cols-[300px_1fr] h-[calc(100vh-220px)]">
-          {/* Conversations list */}
-          <div className="border-r">
-            <CardHeader>
-              <CardTitle>Conversations</CardTitle>
-              <CardDescription>Manage your conversations with clients and sellers</CardDescription>
-            </CardHeader>
-            
-            <div className="px-4 pb-4">
-              <ScrollArea className="h-[calc(100vh-320px)]">
-                {loading ? (
-                  <div className="space-y-4 p-4">
-                    {[...Array(5)].map((_, i) => (
-                      <div key={i} className="flex items-center space-x-4">
-                        <div className="h-10 w-10 rounded-full bg-muted animate-pulse" />
-                        <div className="space-y-2 flex-1">
-                          <div className="h-4 bg-muted rounded animate-pulse w-1/3" />
-                          <div className="h-3 bg-muted rounded animate-pulse w-1/2" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : conversations.length > 0 ? (
-                  <div className="space-y-1">
-                    {conversations.map((conversation) => (
-                      <div 
-                        key={conversation.userId}
-                        className={`flex items-center space-x-3 px-3 py-2 rounded-md cursor-pointer relative ${
-                          selectedUser === conversation.userId ? 'bg-muted' : 'hover:bg-muted/50'
-                        }`}
-                        onClick={() => selectConversation(
-                          conversation.userId, 
-                          conversation.username, 
-                          conversation.fullName, 
-                          conversation.avatarUrl
-                        )}
-                      >
-                        <Avatar className="h-10 w-10">
-                          <AvatarImage src={conversation.avatarUrl || ''} alt={conversation.fullName || conversation.username} />
-                          <AvatarFallback>
-                            {(conversation.fullName?.charAt(0) || conversation.username.charAt(0) || 'U').toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1 overflow-hidden">
-                          <div className="flex justify-between items-baseline">
-                            <h4 className="font-medium text-sm truncate">
-                              {conversation.fullName || conversation.username}
-                            </h4>
-                            <span className="text-xs text-muted-foreground flex-shrink-0">
-                              {format(new Date(conversation.lastMessageDate), 'MMM d')}
-                            </span>
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {conversation.lastMessage}
-                          </p>
-                        </div>
-                        {conversation.unreadCount > 0 && (
-                          <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-primary text-primary-foreground h-5 min-w-5 rounded-full flex items-center justify-center text-xs font-medium">
-                            {conversation.unreadCount}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-[calc(100vh-320px)] flex-col p-4 text-center">
-                    <Info className="h-8 w-8 text-muted-foreground mb-2" />
-                    <h3 className="font-medium">No conversations yet</h3>
-                    <p className="text-muted-foreground text-sm mt-1">
-                      Messages from clients and sellers will appear here
-                    </p>
-                  </div>
-                )}
-              </ScrollArea>
-            </div>
-          </div>
-
-          {/* Messages area */}
-          <div className="flex flex-col">
-            {selectedUser && selectedUserDetails ? (
-              <>
-                <div className="px-6 py-4 border-b flex items-center space-x-3">
-                  <Avatar className="h-10 w-10">
-                    <AvatarImage src={selectedUserDetails.avatarUrl || ''} alt={selectedUserDetails.fullName || selectedUserDetails.username} />
-                    <AvatarFallback>
-                      {(selectedUserDetails.fullName?.charAt(0) || selectedUserDetails.username.charAt(0) || 'U').toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <h3 className="font-medium">{selectedUserDetails.fullName || selectedUserDetails.username}</h3>
-                    <p className="text-xs text-muted-foreground">@{selectedUserDetails.username}</p>
-                  </div>
-                </div>
-                
-                <ScrollArea className="flex-1 p-4">
-                  <div className="space-y-4">
-                    {messages.length > 0 ? (
-                      messages.map((message) => {
-                        const isCurrentUser = message.sender_id === currentUserId;
-                        return (
-                          <div 
-                            key={message.id} 
-                            className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div className="flex space-x-2 max-w-[80%]">
-                              {!isCurrentUser && (
-                                <Avatar className="h-8 w-8 mt-1">
-                                  <AvatarImage src={message.sender?.avatar_url || ''} alt={message.sender?.full_name || message.sender?.username} />
-                                  <AvatarFallback>
-                                    {(message.sender?.full_name?.charAt(0) || message.sender?.username.charAt(0) || 'U').toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
-                              )}
-                              <div className={`flex flex-col ${isCurrentUser ? 'items-end' : 'items-start'}`}>
-                                <div 
-                                  className={`px-4 py-2 rounded-lg ${
-                                    isCurrentUser 
-                                      ? 'bg-primary text-primary-foreground' 
-                                      : 'bg-secondary'
-                                  }`}
-                                >
-                                  <p className="text-sm">{message.content}</p>
-                                </div>
-                                <span className="text-xs text-muted-foreground mt-1">
-                                  {formatMessageDate(message.created_at)}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="flex items-center justify-center h-[calc(100vh-380px)] flex-col">
-                        <p className="text-muted-foreground text-sm">
-                          No messages yet. Start a conversation!
-                        </p>
-                      </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                </ScrollArea>
-                
-                <form 
-                  onSubmit={handleSendMessage}
-                  className="p-4 border-t flex items-center space-x-2"
-                >
-                  <Input 
-                    placeholder="Type your message..." 
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    className="flex-1"
-                  />
-                  <Button type="submit" size="icon" disabled={!newMessage.trim()}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </form>
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-full flex-col">
-                <MessageSquare className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="font-medium text-lg">Select a conversation</h3>
-                <p className="text-muted-foreground text-center max-w-xs mt-2">
-                  Choose a conversation from the list to start messaging
-                </p>
-              </div>
-            )}
+    <div className="w-full h-[calc(100vh-80px)] flex flex-col md:flex-row">
+      {/* Contacts sidebar */}
+      <div className={`w-full md:w-1/3 lg:w-1/4 border-r border-border ${selectedContact ? 'hidden md:block' : ''}`}>
+        <div className="p-4 border-b border-border">
+          <h2 className="text-lg font-semibold mb-4">Messages</h2>
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search conversations..."
+              className="pl-9"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
         </div>
-      </Card>
+        
+        <div className="overflow-auto h-[calc(100%-80px)]">
+          {loadingContacts ? (
+            <>
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="flex items-center gap-3 p-4 border-b border-border">
+                  <Skeleton className="h-12 w-12 rounded-full" />
+                  <div className="space-y-2 flex-1">
+                    <Skeleton className="h-4 w-24" />
+                    <Skeleton className="h-3 w-40" />
+                  </div>
+                </div>
+              ))}
+            </>
+          ) : filteredContacts.length > 0 ? (
+            <div>
+              {filteredContacts.map(contact => (
+                <div
+                  key={contact.id}
+                  onClick={() => handleContactSelect(contact)}
+                  className={`flex items-start gap-3 p-4 border-b border-border cursor-pointer hover:bg-muted/50 transition-colors ${
+                    selectedContact?.id === contact.id ? 'bg-muted' : ''
+                  }`}
+                >
+                  <div className="relative">
+                    <Avatar className="h-12 w-12">
+                      <AvatarImage src={contact.avatar} />
+                      <AvatarFallback>{contact.name[0]}</AvatarFallback>
+                    </Avatar>
+                    <span className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-background ${
+                      contact.status === 'online' ? 'bg-green-500' : 
+                      contact.status === 'away' ? 'bg-yellow-500' : 'bg-gray-400'
+                    }`} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-medium truncate" style={{ maxWidth: 'calc(100% - 70px)' }}>
+                        {contact.name}
+                      </h3>
+                      {contact.lastMessageTime && (
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {formatTime(contact.lastMessageTime)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex justify-between items-center mt-1">
+                      <p className="text-sm text-muted-foreground truncate" style={{ maxWidth: 'calc(100% - 30px)' }}>
+                        {contact.lastMessage}
+                      </p>
+                      {contact.unreadCount ? (
+                        <Badge variant="default" className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center">
+                          {contact.unreadCount}
+                        </Badge>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-4 text-center text-muted-foreground">
+              No conversations found
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Chat area */}
+      <div className={`flex-1 flex flex-col h-full ${selectedContact ? 'flex' : 'hidden md:flex'}`}>
+        {selectedContact ? (
+          <>
+            {/* Chat header */}
+            <div className="p-4 border-b border-border flex items-center justify-between">
+              <Button 
+                variant="ghost" 
+                className="md:hidden mr-2" 
+                onClick={() => setSelectedContact(null)}
+              >
+                <i className="i-arrow-left" />
+                Back
+              </Button>
+              <div className="flex items-center gap-3">
+                <Avatar className="h-10 w-10">
+                  <AvatarImage src={selectedContact.avatar} />
+                  <AvatarFallback>{selectedContact.name[0]}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <h2 className="font-medium">{selectedContact.name}</h2>
+                  <div className="flex items-center text-xs text-muted-foreground">
+                    <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${
+                      selectedContact.status === 'online' ? 'bg-green-500' : 
+                      selectedContact.status === 'away' ? 'bg-yellow-500' : 'bg-gray-400'
+                    }`} />
+                    <span>{selectedContact.status}</span>
+                  </div>
+                </div>
+              </div>
+              <Button variant="ghost" size="icon">
+                <MoreHorizontal className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              {loadingMessages ? (
+                <>
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className={`flex ${i % 2 === 0 ? 'justify-end' : ''}`}>
+                      <div className={`max-w-[80%] ${i % 2 === 0 ? 'ml-auto' : 'mr-auto'}`}>
+                        <Skeleton className={`h-16 w-64 ${i % 2 === 0 ? 'rounded-l-lg rounded-tr-lg' : 'rounded-r-lg rounded-tl-lg'}`} />
+                      </div>
+                    </div>
+                  ))}
+                </>
+              ) : messages.length > 0 ? (
+                <>
+                  {messages.map((message, index) => {
+                    const isCurrentUserMessage = message.sender_id === currentUser;
+                    const showDate = index === 0 || 
+                      formatMessageDate(message.created_at) !== formatMessageDate(messages[index - 1].created_at);
+                    
+                    return (
+                      <div key={message.id} className="space-y-1">
+                        {showDate && (
+                          <div className="flex justify-center my-4">
+                            <Badge variant="outline" className="bg-background text-muted-foreground px-3">
+                              {formatMessageDate(message.created_at)}
+                            </Badge>
+                          </div>
+                        )}
+                        <div className={`flex ${isCurrentUserMessage ? 'justify-end' : 'justify-start'}`}>
+                          <div className="flex items-end gap-2 max-w-[85%]">
+                            {!isCurrentUserMessage && (
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={selectedContact.avatar} />
+                                <AvatarFallback>{selectedContact.name[0]}</AvatarFallback>
+                              </Avatar>
+                            )}
+                            <div className={`px-4 py-2.5 rounded-2xl ${
+                              isCurrentUserMessage ? 
+                                'bg-primary text-primary-foreground rounded-tr-none' : 
+                                'bg-secondary rounded-tl-none'
+                            }`}>
+                              <p className="text-sm whitespace-pre-wrap break-words">{message.content}</p>
+                            </div>
+                            {isCurrentUserMessage && (
+                              <Avatar className="h-8 w-8 invisible">
+                                <AvatarFallback>{currentUser?.[0]}</AvatarFallback>
+                              </Avatar>
+                            )}
+                          </div>
+                        </div>
+                        <div className={`flex ${isCurrentUserMessage ? 'justify-end mr-10' : 'justify-start ml-10'}`}>
+                          <span className="text-xs text-muted-foreground flex items-center">
+                            {formatTime(message.created_at)}
+                            {isCurrentUserMessage && message.is_read && (
+                              <span className="ml-1 text-blue-500 text-xs">Read</span>
+                            )}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div ref={messagesEndRef} />
+                </>
+              ) : (
+                <div className="h-full flex items-center justify-center text-center">
+                  <div className="space-y-2">
+                    <Clock className="h-8 w-8 text-muted-foreground mx-auto" />
+                    <p className="text-muted-foreground">No messages yet</p>
+                    <p className="text-sm text-muted-foreground">Send a message to start the conversation</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Message input */}
+            <div className="p-4 border-t border-border">
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  handleSendMessage();
+                }} 
+                className="flex items-center space-x-2"
+              >
+                <Input
+                  type="text"
+                  placeholder="Type your message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  className="flex-1"
+                />
+                <Button type="submit" size="icon" disabled={!newMessage.trim()}>
+                  <Send className="h-4 w-4" />
+                </Button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <div className="h-full flex items-center justify-center text-center p-4">
+            <div className="space-y-3">
+              <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center">
+                <Send className="h-7 w-7 text-primary" />
+              </div>
+              <h3 className="font-medium text-lg">Your Messages</h3>
+              <p className="text-muted-foreground max-w-xs mx-auto">
+                Select a conversation or start a new one to send messages
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

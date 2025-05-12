@@ -1,47 +1,45 @@
 
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useToast } from '@/components/ui/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
-import { 
-  Clock, 
-  Star, 
-  DollarSign, 
-  RefreshCw, 
-  Calendar, 
-  CheckCircle, 
-  MessageSquare,
-  Heart,
-  Share,
-  FileText,
-  ShieldCheck
-} from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { RazorpayButton } from "@/components/ui/RazorpayButton";
+import { toast } from '@/components/ui/use-toast';
+import { 
+  Check, 
+  Clock, 
+  Calendar, 
+  MessageSquare,
+  Heart, 
+  Share2, 
+  Star, 
+  IndianRupee,
+  ChevronRight 
+} from 'lucide-react';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
+import { format } from 'date-fns';
 
 interface Service {
   id: string;
+  freelancer_id: string;
   title: string;
   description: string;
   price: number;
   delivery_time: number;
   revisions: number;
   images: string[];
-  is_featured: boolean;
   created_at: string;
-  freelancer_id: string;
-  freelancer: {
+  is_featured: boolean;
+  profiles?: {
     username: string;
-    full_name: string;
+    full_name: string | null;
     avatar_url: string | null;
-    bio: string | null;
   };
 }
 
@@ -49,86 +47,77 @@ export default function ServiceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [service, setService] = useState<Service | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [selectedPackage, setSelectedPackage] = useState('basic');
   const [isSaved, setIsSaved] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-  const { toast } = useToast();
-  const navigate = useNavigate();
-
+  
   useEffect(() => {
-    fetchServiceDetails();
-    checkAuthStatus();
-  }, [id]);
-
-  const fetchServiceDetails = async () => {
-    if (!id) return;
+    const fetchService = async () => {
+      try {
+        if (!id) return;
+        
+        const { data, error } = await supabase
+          .from('services')
+          .select(`
+            *,
+            profiles(username, full_name, avatar_url)
+          `)
+          .eq('id', id)
+          .single();
+        
+        if (error) throw error;
+        
+        setService(data);
+        checkIfServiceIsSaved(data.id);
+      } catch (error) {
+        console.error('Error fetching service:', error);
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load service details. Please try again.",
+        });
+      } finally {
+        setLoading(false);
+      }
+    };
     
+    fetchService();
+  }, [id]);
+  
+  const checkIfServiceIsSaved = async (serviceId: string) => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) return;
+      
       const { data, error } = await supabase
-        .from('services')
-        .select(`
-          *,
-          freelancer:profiles(username, full_name, avatar_url, bio)
-        `)
-        .eq('id', id)
-        .single();
+        .from('saved_services')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .eq('service_id', serviceId)
+        .maybeSingle();
       
       if (error) throw error;
-      setService(data);
       
-      // Check if the service is saved by the user
-      checkIfSaved(data.id);
+      setIsSaved(!!data);
     } catch (error) {
-      console.error('Error fetching service details:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to load service details. Please try again.",
-      });
-    } finally {
-      setLoading(false);
+      console.error('Error checking saved service:', error);
     }
   };
-
-  const checkAuthStatus = async () => {
-    const { data } = await supabase.auth.getSession();
-    setIsAuthenticated(!!data.session);
-    if (data.session) {
-      setCurrentUserId(data.session.user.id);
-    }
-  };
-
-  const checkIfSaved = async (serviceId: string) => {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) return;
-    
-    const { data, error } = await supabase
-      .from('saved_services')
-      .select()
-      .eq('user_id', session.user.id)
-      .eq('service_id', serviceId);
-    
-    if (!error && data && data.length > 0) {
-      setIsSaved(true);
-    }
-  };
-
-  const handleSaveService = async () => {
-    if (!isAuthenticated) {
-      toast({
-        title: "Sign in required",
-        description: "Please sign in to save this service",
-      });
-      navigate('/auth');
-      return;
-    }
-    
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session || !service) return;
-    
+  
+  const toggleSaveService = async () => {
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        toast({
+          title: "Authentication required",
+          description: "Please sign in to save services.",
+        });
+        return;
+      }
+      
+      if (!service) return;
+      
       if (isSaved) {
         // Remove from saved
         const { error } = await supabase
@@ -141,8 +130,8 @@ export default function ServiceDetailPage() {
         
         setIsSaved(false);
         toast({
-          title: "Service removed",
-          description: "This service has been removed from your saved list.",
+          title: "Removed from saved",
+          description: "Service has been removed from your saved items.",
         });
       } else {
         // Add to saved
@@ -150,394 +139,324 @@ export default function ServiceDetailPage() {
           .from('saved_services')
           .insert({
             user_id: session.user.id,
-            service_id: service.id,
+            service_id: service.id
           });
         
         if (error) throw error;
         
         setIsSaved(true);
         toast({
-          title: "Service saved",
-          description: "This service has been added to your saved list.",
+          title: "Saved",
+          description: "Service has been added to your saved items.",
         });
       }
     } catch (error) {
-      console.error('Error saving/unsaving service:', error);
+      console.error('Error toggling saved service:', error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "Failed to save/unsave service. Please try again.",
+        description: "Failed to save service. Please try again.",
       });
     }
   };
-
-  const handleContactSeller = async () => {
-    if (!isAuthenticated) {
+  
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: service?.title || 'Check out this service',
+        text: service?.description || 'I found this great service on Grew up',
+        url: window.location.href,
+      })
+      .catch(error => console.error('Error sharing:', error));
+    } else {
+      // Fallback for browsers that don't support navigator.share
+      navigator.clipboard.writeText(window.location.href);
       toast({
-        title: "Sign in required",
-        description: "Please sign in to contact the seller",
-      });
-      navigate('/auth');
-      return;
-    }
-    
-    if (!service || !currentUserId) return;
-    
-    try {
-      // Check if conversation already exists
-      const { data: existingChats, error: chatError } = await supabase
-        .from('messages')
-        .select('*')
-        .or(`sender_id.eq.${currentUserId},receiver_id.eq.${currentUserId}`)
-        .or(`sender_id.eq.${service.freelancer_id},receiver_id.eq.${service.freelancer_id}`);
-      
-      if (chatError) throw chatError;
-      
-      // Create initial message to start the conversation
-      if (!existingChats || existingChats.length === 0) {
-        const { error: msgError } = await supabase
-          .from('messages')
-          .insert({
-            content: `Hi, I'm interested in your service: ${service.title}`,
-            sender_id: currentUserId,
-            receiver_id: service.freelancer_id,
-            is_read: false
-          });
-        
-        if (msgError) throw msgError;
-        
-        toast({
-          title: "Message sent",
-          description: "You've started a conversation with the seller.",
-        });
-      }
-      
-      // Navigate to messages page
-      navigate('/dashboard/messages');
-    } catch (error) {
-      console.error('Error initiating chat:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to initiate chat with seller. Please try again.",
+        title: "Link copied",
+        description: "Service link has been copied to your clipboard.",
       });
     }
   };
-
-  const handleOrderNow = async () => {
-    if (!isAuthenticated) {
-      toast({
-        title: "Sign in required",
-        description: "Please sign in to order this service",
-      });
-      navigate('/auth');
-      return;
-    }
-    
-    if (!service || !currentUserId) return;
-    
-    try {
-      // Create a new order
-      const { data: order, error: orderError } = await supabase
-        .from('orders')
-        .insert({
-          service_id: service.id,
-          client_id: currentUserId,
-          price: service.price,
-          status: 'pending',
-          requirements: 'No specific requirements provided yet.'
-        })
-        .select()
-        .single();
-      
-      if (orderError) throw orderError;
-      
-      // Create notification for seller
-      await supabase
-        .from('notifications')
-        .insert({
-          user_id: service.freelancer_id,
-          title: 'New Order Received',
-          content: `You have received a new order for "${service.title}"`
-        });
-      
-      // Send initial message
-      await supabase
-        .from('messages')
-        .insert({
-          content: `Hi, I've placed an order for your service: ${service.title}. Order #${order.id}`,
-          sender_id: currentUserId,
-          receiver_id: service.freelancer_id,
-          order_id: order.id,
-          is_read: false
-        });
-      
-      toast({
-        title: "Order placed",
-        description: "Your order has been placed successfully.",
-      });
-      
-      navigate('/dashboard/orders');
-    } catch (error) {
-      console.error('Error placing order:', error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to place order. Please try again.",
-      });
+  
+  const handleContactSeller = () => {
+    // Implementation would depend on your messaging system
+    toast({
+      title: "Contact initiated",
+      description: "You can now chat with the seller in your messages.",
+    });
+  };
+  
+  // Package pricing tiers - in a real app, this would come from the database
+  const packages = {
+    basic: {
+      name: 'Basic',
+      price: service?.price || 0,
+      deliveryTime: service?.delivery_time || 3,
+      revisions: service?.revisions || 1,
+      features: [
+        'Standard quality service',
+        'Delivery within the specified timeframe',
+        'Basic revisions as specified'
+      ]
+    },
+    standard: {
+      name: 'Standard',
+      price: (service?.price || 0) * 1.5,
+      deliveryTime: Math.max(1, (service?.delivery_time || 3) - 1),
+      revisions: (service?.revisions || 1) + 1,
+      features: [
+        'Higher quality service',
+        'Faster delivery time',
+        'More revision rounds',
+        'Priority support'
+      ]
+    },
+    premium: {
+      name: 'Premium',
+      price: (service?.price || 0) * 2.5,
+      deliveryTime: Math.max(1, (service?.delivery_time || 3) - 2),
+      revisions: (service?.revisions || 1) + 3,
+      features: [
+        'Premium quality service',
+        'Express delivery',
+        'Unlimited revisions',
+        'Priority support',
+        'Additional extras and customizations'
+      ]
     }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
-        <main className="flex-grow pt-16 pb-16">
-          <div className="container mx-auto px-4 py-8 max-w-7xl">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 space-y-6">
-                <Skeleton className="h-[400px] w-full rounded-lg" />
-                <div className="space-y-4">
-                  <Skeleton className="h-10 w-3/4" />
-                  <Skeleton className="h-6 w-1/2" />
-                  <Skeleton className="h-40 w-full" />
-                </div>
-              </div>
-              <div>
-                <Skeleton className="h-[500px] w-full rounded-lg" />
-              </div>
-            </div>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
-
-  if (!service) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <Navbar />
-        <main className="flex-grow pt-16 pb-16">
-          <div className="container mx-auto px-4 py-8 max-w-7xl text-center">
-            <h1 className="text-3xl font-bold mb-4">Service Not Found</h1>
-            <p className="text-muted-foreground mb-6">The service you're looking for may have been removed or doesn't exist.</p>
-            <Button onClick={() => navigate('/services')}>Browse Services</Button>
-          </div>
-        </main>
-        <Footer />
-      </div>
-    );
-  }
+  
+  const selectedPackageData = packages[selectedPackage as keyof typeof packages];
 
   return (
     <div className="min-h-screen flex flex-col">
       <Navbar />
-      <main className="flex-grow pt-16 pb-16">
-        <div className="container mx-auto px-4 py-8 max-w-7xl">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column - Service Details */}
-            <div className="lg:col-span-2 space-y-6">
-              <h1 className="text-3xl font-bold">{service.title}</h1>
-              
-              <div className="flex items-center space-x-4">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={service.freelancer?.avatar_url || ''} alt={service.freelancer?.full_name} />
-                  <AvatarFallback>
-                    {service.freelancer?.full_name?.charAt(0) || service.freelancer?.username?.charAt(0) || 'U'}
-                  </AvatarFallback>
-                </Avatar>
+      <div className="pt-20 flex-grow">
+        <div className="container mx-auto px-4 py-8">
+          {loading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-6">
+                <Skeleton className="h-72 w-full rounded-lg" />
+                <Skeleton className="h-10 w-3/4" />
+                <Skeleton className="h-32 w-full" />
+                <Skeleton className="h-40 w-full" />
+              </div>
+              <div className="lg:col-span-1">
+                <Skeleton className="h-72 w-full rounded-lg" />
+              </div>
+            </div>
+          ) : service ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              <div className="lg:col-span-2 space-y-8">
+                {/* Service images */}
+                <div className="rounded-lg overflow-hidden">
+                  {service.images && service.images.length > 0 ? (
+                    <img 
+                      src={service.images[0]} 
+                      alt={service.title}
+                      className="w-full h-auto object-cover"
+                    />
+                  ) : (
+                    <div className="bg-muted h-72 flex items-center justify-center">
+                      <span className="text-muted-foreground">No image available</span>
+                    </div>
+                  )}
+                </div>
+                
+                {/* Service title and meta */}
                 <div>
-                  <p className="font-medium">{service.freelancer?.full_name || service.freelancer?.username}</p>
-                  <div className="flex items-center text-sm">
-                    <Star className="h-4 w-4 text-yellow-400 mr-1" />
-                    <span>5.0</span>
-                    <span className="text-muted-foreground ml-1">(24 reviews)</span>
+                  <h1 className="text-2xl md:text-3xl font-bold mb-4">{service.title}</h1>
+                  
+                  <div className="flex flex-wrap gap-4 items-center text-sm">
+                    <div className="flex items-center">
+                      <Star className="h-4 w-4 text-yellow-400 mr-1" />
+                      <span className="font-medium">0</span>
+                      <span className="text-muted-foreground ml-1">(0 reviews)</span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <Clock className="h-4 w-4 text-muted-foreground mr-1" />
+                      <span>
+                        {service.delivery_time} day{service.delivery_time !== 1 ? 's' : ''} delivery
+                      </span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <Calendar className="h-4 w-4 text-muted-foreground mr-1" />
+                      <span>
+                        Since {format(new Date(service.created_at), 'MMM yyyy')}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Seller info */}
+                <div className="flex items-center gap-4 p-4 bg-secondary/50 rounded-lg">
+                  <Avatar className="h-16 w-16">
+                    <AvatarImage src={service.profiles?.avatar_url || undefined} />
+                    <AvatarFallback>
+                      {service.profiles?.full_name?.[0] || service.profiles?.username?.[0] || 'S'}
+                    </AvatarFallback>
+                  </Avatar>
+                  
+                  <div>
+                    <h3 className="font-medium">
+                      {service.profiles?.full_name || service.profiles?.username || 'Unknown Seller'}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">Level 1 Seller</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="mt-2"
+                      onClick={handleContactSeller}
+                    >
+                      <MessageSquare className="mr-2 h-4 w-4" />
+                      Contact Seller
+                    </Button>
+                  </div>
+                </div>
+                
+                {/* Service description */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-bold">About This Service</h2>
+                  <div className="text-muted-foreground whitespace-pre-line">
+                    {service.description}
+                  </div>
+                </div>
+                
+                {/* What you'll get section */}
+                <div className="space-y-4">
+                  <h2 className="text-xl font-bold">What You'll Get</h2>
+                  <ul className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <li className="flex items-start">
+                      <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                      <span>High-quality delivery tailored to your requirements</span>
+                    </li>
+                    <li className="flex items-start">
+                      <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                      <span>{service.delivery_time} day delivery</span>
+                    </li>
+                    <li className="flex items-start">
+                      <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                      <span>{service.revisions} revision{service.revisions !== 1 ? 's' : ''}</span>
+                    </li>
+                    <li className="flex items-start">
+                      <Check className="h-5 w-5 text-green-500 mr-2 flex-shrink-0 mt-0.5" />
+                      <span>100% satisfaction guarantee</span>
+                    </li>
+                  </ul>
+                </div>
+                
+                {/* Reviews section - placeholder for now */}
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center">
+                    <h2 className="text-xl font-bold">Reviews</h2>
+                    <Button variant="outline" size="sm">
+                      See All Reviews
+                    </Button>
+                  </div>
+                  
+                  <div className="text-center py-8 border rounded-lg">
+                    <Star className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-lg font-medium mb-1">No Reviews Yet</p>
+                    <p className="text-muted-foreground">
+                      This service doesn't have any reviews yet. Be the first to try it!
+                    </p>
                   </div>
                 </div>
               </div>
               
-              {/* Service Images */}
-              <div className="rounded-lg overflow-hidden border border-border">
-                <img 
-                  src={service.images && service.images.length > 0 ? service.images[0] : 'https://via.placeholder.com/800x450'} 
-                  alt={service.title} 
-                  className="w-full h-[400px] object-cover"
-                />
-              </div>
-              
-              <Tabs defaultValue="description" className="mt-8">
-                <TabsList>
-                  <TabsTrigger value="description">Description</TabsTrigger>
-                  <TabsTrigger value="about-seller">About The Seller</TabsTrigger>
-                  <TabsTrigger value="reviews">Reviews</TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="description" className="space-y-4 mt-4">
-                  <h2 className="text-xl font-semibold">Service Description</h2>
-                  <p className="text-muted-foreground whitespace-pre-line">{service.description}</p>
-                  
-                  <h3 className="text-lg font-semibold mt-6">What's Included</h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
-                    <div className="flex items-center space-x-3">
-                      <Clock className="h-5 w-5 text-primary" />
-                      <span>{service.delivery_time} days delivery</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <RefreshCw className="h-5 w-5 text-primary" />
-                      <span>{service.revisions} revisions</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <FileText className="h-5 w-5 text-primary" />
-                      <span>Source files included</span>
-                    </div>
-                    <div className="flex items-center space-x-3">
-                      <CheckCircle className="h-5 w-5 text-primary" />
-                      <span>100% satisfaction guarantee</span>
-                    </div>
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="about-seller" className="mt-4">
-                  <div className="flex items-center space-x-4 mb-4">
-                    <Avatar className="h-16 w-16">
-                      <AvatarImage src={service.freelancer?.avatar_url || ''} alt={service.freelancer?.full_name} />
-                      <AvatarFallback className="text-lg">
-                        {service.freelancer?.full_name?.charAt(0) || service.freelancer?.username?.charAt(0) || 'U'}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h2 className="text-xl font-semibold">{service.freelancer?.full_name || service.freelancer?.username}</h2>
-                      <p className="text-primary font-medium">Professional Freelancer</p>
-                      <div className="flex items-center text-sm mt-1">
-                        <Star className="h-4 w-4 text-yellow-400 mr-1" />
-                        <span>5.0</span>
-                        <span className="text-muted-foreground ml-1">(24 reviews)</span>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <Separator className="my-4" />
-                  
-                  <div className="space-y-4">
-                    <h3 className="font-medium">About Me</h3>
-                    <p className="text-muted-foreground">{service.freelancer?.bio || "No bio available."}</p>
-                  </div>
-                </TabsContent>
-                
-                <TabsContent value="reviews" className="mt-4 space-y-6">
-                  <div className="flex items-center space-x-4">
-                    <div className="bg-primary/10 p-4 rounded-lg text-center flex-shrink-0">
-                      <div className="text-4xl font-bold text-primary">5.0</div>
-                      <div className="flex items-center justify-center mt-1">
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Star key={star} className="h-4 w-4 text-yellow-400" fill="#FBBF24" />
-                        ))}
-                      </div>
-                      <div className="text-sm text-muted-foreground mt-1">24 reviews</div>
-                    </div>
-                    
-                    <div className="flex-grow space-y-2">
-                      {["Communication", "Service Quality", "Value", "Expertise"].map((category) => (
-                        <div key={category} className="flex items-center">
-                          <span className="text-sm w-32">{category}</span>
+              {/* Pricing sidebar */}
+              <div className="lg:col-span-1">
+                <div className="sticky top-24">
+                  <Card className="overflow-hidden">
+                    <Tabs defaultValue="basic" value={selectedPackage} onValueChange={setSelectedPackage}>
+                      <TabsList className="grid grid-cols-3 mb-0">
+                        <TabsTrigger value="basic">Basic</TabsTrigger>
+                        <TabsTrigger value="standard">Standard</TabsTrigger>
+                        <TabsTrigger value="premium">Premium</TabsTrigger>
+                      </TabsList>
+                      
+                      <TabsContent value={selectedPackage} className="p-6 space-y-6">
+                        <div className="space-y-2">
                           <div className="flex items-center">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <Star key={star} className="h-3 w-3 text-yellow-400" fill="#FBBF24" />
-                            ))}
-                            <span className="text-sm ml-2">5.0</span>
+                            <IndianRupee className="h-5 w-5 mr-1" />
+                            <span className="text-2xl font-bold">
+                              {selectedPackageData.price.toFixed(0)}
+                            </span>
+                          </div>
+                          
+                          <p className="text-sm text-muted-foreground">
+                            {selectedPackageData.name} Package
+                          </p>
+                        </div>
+                        
+                        <p className="text-sm">
+                          {selectedPackageData.name === 'Basic' 
+                            ? service.description.substring(0, 120) + (service.description.length > 120 ? '...' : '')
+                            : selectedPackageData.name === 'Standard'
+                              ? 'Enhanced version with faster delivery and more revisions.'
+                              : 'Premium service with all features and highest priority.'}
+                        </p>
+                        
+                        <div className="flex items-center text-sm">
+                          <Clock className="h-4 w-4 text-muted-foreground mr-2" />
+                          <span>
+                            {selectedPackageData.deliveryTime} day{selectedPackageData.deliveryTime !== 1 ? 's' : ''} delivery
+                          </span>
+                        </div>
+                        
+                        <ul className="space-y-2">
+                          {selectedPackageData.features.map((feature, index) => (
+                            <li key={index} className="flex text-sm">
+                              <Check className="h-4 w-4 text-green-500 mr-2 mt-0.5" />
+                              <span>{feature}</span>
+                            </li>
+                          ))}
+                        </ul>
+                        
+                        <div className="pt-4 space-y-3">
+                          <RazorpayButton 
+                            amount={selectedPackageData.price} 
+                            productName={service.title}
+                            productDescription={`${selectedPackageData.name} Package - ${service.title}`}
+                            buttonText="Order Now"
+                            className="w-full"
+                          />
+                          
+                          <div className="flex space-x-2">
+                            <Button 
+                              variant="outline" 
+                              className="flex-1" 
+                              onClick={toggleSaveService}
+                            >
+                              <Heart className={`mr-2 h-4 w-4 ${isSaved ? 'fill-red-500 text-red-500' : ''}`} />
+                              {isSaved ? 'Saved' : 'Save'}
+                            </Button>
+                            <Button variant="outline" size="icon" onClick={handleShare}>
+                              <Share2 className="h-4 w-4" />
+                            </Button>
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                  
-                  <Separator />
-                  
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      Reviews will appear here once clients provide feedback on this service.
-                    </p>
-                  </div>
-                </TabsContent>
-              </Tabs>
+                      </TabsContent>
+                    </Tabs>
+                  </Card>
+                </div>
+              </div>
             </div>
-            
-            {/* Right Column - Pricing & Order */}
-            <div>
-              <Card className="sticky top-24">
-                <CardContent className="p-6 space-y-6">
-                  <div className="flex justify-between items-center">
-                    <div className="flex items-center">
-                      <DollarSign className="h-5 w-5 text-primary mr-1" />
-                      <span className="text-2xl font-bold">${service.price}</span>
-                    </div>
-                    <div className="flex space-x-2">
-                      <Button 
-                        variant="outline" 
-                        size="icon" 
-                        onClick={handleSaveService}
-                        aria-label={isSaved ? "Remove from saved" : "Save service"}
-                      >
-                        <Heart className={`h-5 w-5 ${isSaved ? "fill-primary text-primary" : ""}`} />
-                      </Button>
-                      <Button variant="outline" size="icon" aria-label="Share">
-                        <Share className="h-5 w-5" />
-                      </Button>
-                    </div>
-                  </div>
-                  
-                  <p className="text-muted-foreground">{service.description.substring(0, 100)}...</p>
-                  
-                  <div className="space-y-3">
-                    <div className="flex justify-between text-sm">
-                      <span className="flex items-center"><Clock className="h-4 w-4 mr-2" /> Delivery Time</span>
-                      <span className="font-medium">{service.delivery_time} days</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="flex items-center"><RefreshCw className="h-4 w-4 mr-2" /> Revisions</span>
-                      <span className="font-medium">{service.revisions}</span>
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <h3 className="font-medium">What you'll get:</h3>
-                    <ul className="space-y-1.5">
-                      <li className="flex items-start">
-                        <CheckCircle className="h-4 w-4 text-primary mt-0.5 mr-2" />
-                        <span className="text-sm">Complete and ready-to-use deliverable</span>
-                      </li>
-                      <li className="flex items-start">
-                        <CheckCircle className="h-4 w-4 text-primary mt-0.5 mr-2" />
-                        <span className="text-sm">Source files included</span>
-                      </li>
-                      <li className="flex items-start">
-                        <CheckCircle className="h-4 w-4 text-primary mt-0.5 mr-2" />
-                        <span className="text-sm">Commercial use rights</span>
-                      </li>
-                    </ul>
-                  </div>
-                  
-                  <div className="pt-4 space-y-3">
-                    <Button className="w-full" onClick={handleOrderNow}>
-                      Order Now
-                    </Button>
-                    <Button variant="outline" className="w-full" onClick={handleContactSeller}>
-                      <MessageSquare className="h-4 w-4 mr-2" />
-                      Contact Seller
-                    </Button>
-                  </div>
-                  
-                  <div className="pt-2 flex items-center justify-center text-xs text-muted-foreground">
-                    <ShieldCheck className="h-3 w-3 mr-1" />
-                    <span>Secure payment processed through our platform</span>
-                  </div>
-                </CardContent>
-              </Card>
+          ) : (
+            <div className="text-center py-16">
+              <h2 className="text-2xl font-bold mb-2">Service Not Found</h2>
+              <p className="text-muted-foreground mb-6">
+                The service you're looking for doesn't exist or has been removed.
+              </p>
+              <Button onClick={() => window.location.href = '/services'}>
+                Browse Services
+              </Button>
             </div>
-          </div>
+          )}
         </div>
-      </main>
+      </div>
       <Footer />
     </div>
   );
