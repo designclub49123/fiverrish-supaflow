@@ -1,3 +1,4 @@
+
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,48 +22,21 @@ import SavedServicesPage from "./pages/SavedServicesPage";
 import BrowseServicesPage from "./pages/BrowseServicesPage";
 import ServiceDetailPage from "./pages/ServiceDetailPage";
 import BecomeSellerPage from "./pages/BecomeSellerPage";
-import BlogPage from "./pages/BlogPage";
-import EventsPage from "./pages/EventsPage";
-import ForumPage from "./pages/ForumPage";
-import InfluencersPage from "./pages/InfluencersPage";
-import CommunityStandardsPage from "./pages/CommunityStandardsPage";
-import CategoryPage from "./pages/CategoryPage";
-import FindServicesPage from "./pages/FindServicesPage";
 
 const queryClient = new QueryClient();
 
 const App = () => (
-  <BrowserRouter>
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <BrowserRouter>
         <Routes>
           <Route path="/" element={<Index />} />
           <Route path="/auth" element={<Auth />} />
           <Route path="/services" element={<BrowseServicesPage />} />
           <Route path="/services/:id" element={<ServiceDetailPage />} />
-          <Route path="/services/:category" element={<CategoryPage />} />
           <Route path="/become-seller" element={<BecomeSellerPage />} />
-          <Route path="/find-services" element={<FindServicesPage />} />
-
-          {/* Community Pages */}
-          <Route path="/blog" element={<BlogPage />} />
-          <Route path="/forum" element={<ForumPage />} />
-          <Route path="/events" element={<EventsPage />} />
-          <Route path="/influencers" element={<InfluencersPage />} />
-          <Route path="/community" element={<CommunityStandardsPage />} />
-          
-          {/* Other Static Pages */}
-          <Route path="/careers" element={<HelpPage title="Careers" />} />
-          <Route path="/press" element={<HelpPage title="Press & News" />} />
-          <Route path="/partnerships" element={<HelpPage title="Partnerships" />} />
-          <Route path="/privacy" element={<HelpPage title="Privacy Policy" />} />
-          <Route path="/terms" element={<HelpPage title="Terms of Service" />} />
-          <Route path="/help" element={<HelpPage title="Help & Support" />} />
-          <Route path="/trust" element={<HelpPage title="Trust & Safety" />} />
-          <Route path="/selling" element={<HelpPage title="Selling on Grew up" />} />
-          <Route path="/buying" element={<HelpPage title="Buying on Grew up" />} />
           
           {/* Dashboard routes */}
           <Route path="/dashboard" element={<DashboardLayout />}>
@@ -84,9 +58,9 @@ const App = () => (
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>
-      </TooltipProvider>
-    </QueryClientProvider>
-  </BrowserRouter>
+      </BrowserRouter>
+    </TooltipProvider>
+  </QueryClientProvider>
 );
 
 export default App;

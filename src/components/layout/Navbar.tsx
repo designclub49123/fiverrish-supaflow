@@ -9,7 +9,6 @@ import {
   X,
   ChevronDown,
   User,
-  IndianRupee
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -20,7 +19,6 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { toast } from '@/components/ui/use-toast';
 
 interface NavLinkProps {
   to: string;
@@ -62,7 +60,6 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -105,17 +102,6 @@ export default function Navbar() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate('/');
-    toast({
-      title: "Signed out successfully",
-      description: "You have been signed out of your account."
-    });
-  };
-  
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchTerm.trim()) {
-      navigate(`/services?search=${encodeURIComponent(searchTerm)}`);
-    }
   };
 
   return (
@@ -133,10 +119,10 @@ export default function Navbar() {
           <Link 
             to="/"
             className="flex items-center space-x-2"
-            aria-label="Grew up logo"
+            aria-label="Fiverrish logo"
           >
             <span className="text-xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-500">
-              Grew up
+              Fiverrish
             </span>
           </Link>
 
@@ -161,24 +147,14 @@ export default function Navbar() {
             <NavLink to="/services">Explore</NavLink>
             <NavLink to="/become-seller">Become a Seller</NavLink>
             
-            <form onSubmit={handleSearch} className="relative flex items-center">
+            <div className="relative">
               <input
                 type="text"
                 placeholder="Search services..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-9 pr-4 py-2 w-52 rounded-full text-sm bg-secondary border border-border focus:outline-none focus:ring-1 focus:ring-primary transition-all"
               />
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Button 
-                type="submit" 
-                size="icon" 
-                variant="ghost" 
-                className="absolute right-1 top-1/2 transform -translate-y-1/2 h-7 w-7 rounded-full"
-              >
-                <Search className="h-3.5 w-3.5" />
-              </Button>
-            </form>
+            </div>
           </nav>
 
           {/* Auth buttons or user menu */}
@@ -258,23 +234,14 @@ export default function Navbar() {
         )}
       >
         <div className="container mx-auto px-4 py-4 space-y-4">
-          <form onSubmit={handleSearch} className="relative mb-4">
+          <div className="relative mb-4">
             <input
               type="text"
               placeholder="Search services..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-12 py-2 rounded-full text-sm bg-secondary border border-border focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+              className="w-full pl-9 pr-4 py-2 rounded-full text-sm bg-secondary border border-border focus:outline-none focus:ring-1 focus:ring-primary transition-all"
             />
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Button 
-              type="submit"
-              size="sm"
-              className="absolute right-1 top-1/2 transform -translate-y-1/2 rounded-full"
-            >
-              Search
-            </Button>
-          </form>
+          </div>
           
           <nav className="flex flex-col space-y-3">
             <Link to="/services" className="py-2 px-3 rounded-md hover:bg-secondary">
