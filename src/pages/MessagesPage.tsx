@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -67,7 +66,6 @@ export default function MessagesPage() {
   }, []);
 
   useEffect(() => {
-    // Check if there's a contactId in location state (from orders page)
     if (location.state?.contactId && currentUserId) {
       handleDirectContact(location.state.contactId);
     }
@@ -332,6 +330,7 @@ export default function MessagesPage() {
     setShowConversations(true);
     setSelectedUser(null);
     setSelectedUserDetails(null);
+    setMessages([]); // Clear messages to avoid stale data
   };
 
   // Mobile layout
@@ -416,7 +415,8 @@ export default function MessagesPage() {
       <div className="h-screen flex flex-col">
         {selectedUserDetails && (
           <>
-            <div className="bg-white border-b px-4 py-3 flex items-center space-x-3">
+            {/* Sticky Header */}
+            <div className="bg-white border-b px-4 py-3 flex items-center space-x-3 sticky top-0 z-10">
               <Button 
                 variant="ghost" 
                 size="icon" 
@@ -445,6 +445,7 @@ export default function MessagesPage() {
               </Button>
             </div>
             
+            {/* Scrollable Messages */}
             <ScrollArea className="flex-1 p-4">
               <div className="space-y-4">
                 {messages.map((message) => {
@@ -477,6 +478,7 @@ export default function MessagesPage() {
               </div>
             </ScrollArea>
             
+            {/* Message Input */}
             <form 
               onSubmit={handleSendMessage}
               className="p-4 border-t bg-white flex items-end space-x-2"
@@ -589,7 +591,8 @@ export default function MessagesPage() {
           <div className="flex flex-col">
             {selectedUser && selectedUserDetails ? (
               <>
-                <div className="px-6 py-4 border-b flex items-center justify-between">
+                {/* Sticky Header */}
+                <div className="px-6 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-10">
                   <div className="flex items-center space-x-3">
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={selectedUserDetails.avatarUrl || ''} />
@@ -616,6 +619,7 @@ export default function MessagesPage() {
                   </div>
                 </div>
                 
+                {/* Scrollable Messages */}
                 <ScrollArea className="flex-1 p-4">
                   <div className="space-y-4">
                     {messages.length > 0 ? (
@@ -656,6 +660,7 @@ export default function MessagesPage() {
                   </div>
                 </ScrollArea>
                 
+                {/* Message Input */}
                 <form 
                   onSubmit={handleSendMessage}
                   className="p-4 border-t flex items-center space-x-2"
