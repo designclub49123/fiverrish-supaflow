@@ -158,6 +158,7 @@ export default function DashboardLayout() {
       { icon: FileText, label: 'My Services', path: '/dashboard/services' },
       { icon: ListOrdered, label: 'Orders', path: '/dashboard/orders' },
       { icon: PlusCircle, label: 'Create Service', path: '/dashboard/services/create' },
+      { icon: Briefcase, label: 'Portfolio', path: '/dashboard/portfolio' },
       { icon: BarChart, label: 'Analytics', path: '/dashboard/analytics' }
     ];
     

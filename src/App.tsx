@@ -22,6 +22,7 @@ import SavedServicesPage from "./pages/SavedServicesPage";
 import BrowseServicesPage from "./pages/BrowseServicesPage";
 import ServiceDetailPage from "./pages/ServiceDetailPage";
 import BecomeSellerPage from "./pages/BecomeSellerPage";
+import PortfolioPage from "./pages/PortfolioPage";
 
 const queryClient = new QueryClient();
 
@@ -42,6 +43,7 @@ const App = () => (
           <Route path="/dashboard" element={<DashboardLayout />}>
             <Route index element={<Dashboard />} />
             <Route path="profile" element={<ProfilePage />} />
+            <Route path="portfolio" element={<PortfolioPage />} />
             <Route path="messages" element={<MessagesPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
             <Route path="orders" element={<OrdersPage />} />

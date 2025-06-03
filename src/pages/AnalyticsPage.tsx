@@ -1,272 +1,265 @@
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell } from 'recharts';
-import { useState } from "react";
+import { useState, useEffect } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/components/ui/use-toast';
+import { useNavigate } from 'react-router-dom';
+import { DollarSign, Users, ShoppingCart, TrendingUp, Star, MessageSquare } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
 
-const revenueData = [
-  { name: 'Jan', revenue: 1500 },
-  { name: 'Feb', revenue: 2300 },
-  { name: 'Mar', revenue: 4100 },
-  { name: 'Apr', revenue: 3200 },
-  { name: 'May', revenue: 5400 },
-  { name: 'Jun', revenue: 6200 },
-];
-
-const ordersData = [
-  { name: 'Jan', orders: 12 },
-  { name: 'Feb', orders: 19 },
-  { name: 'Mar', orders: 31 },
-  { name: 'Apr', orders: 25 },
-  { name: 'May', orders: 42 },
-  { name: 'Jun', orders: 49 },
-];
-
-const servicePerformanceData = [
-  { name: 'Logo Design', value: 40 },
-  { name: 'Web Development', value: 30 },
-  { name: 'Content Writing', value: 20 },
-  { name: 'Digital Marketing', value: 10 },
-];
-
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042'];
+interface AnalyticsData {
+  totalRevenue: number;
+  totalOrders: number;
+  completedOrders: number;
+  pendingOrders: number;
+  averageRating: number;
+  totalReviews: number;
+  totalServices: number;
+  totalClients: number;
+}
 
 export default function AnalyticsPage() {
-  const [timeframe, setTimeframe] = useState("6m");
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [isFreelancer, setIsFreelancer] = useState(false);
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    checkAuthAndFetchData();
+  }, []);
+
+  const checkAuthAndFetchData = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        navigate('/auth');
+        return;
+      }
+
+      // Check if user is freelancer
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('is_freelancer')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profile) {
+        setIsFreelancer(profile.is_freelancer);
+        await fetchAnalyticsData(session.user.id, profile.is_freelancer);
+      }
+    } catch (error) {
+      console.error('Error checking auth:', error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to load analytics data. Please try again.",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchAnalyticsData = async (userId: string, userIsFreelancer: boolean) => {
+    try {
+      if (userIsFreelancer) {
+        // Fetch freelancer analytics
+        const [ordersData, servicesData, reviewsData] = await Promise.all([
+          supabase
+            .from('orders')
+            .select(`
+              *,
+              service:services!inner(freelancer_id)
+            `)
+            .eq('service.freelancer_id', userId),
+          
+          supabase
+            .from('services')
+            .select('*')
+            .eq('freelancer_id', userId),
+            
+          supabase
+            .from('reviews')
+            .select(`
+              *,
+              service:services!inner(freelancer_id)
+            `)
+            .eq('service.freelancer_id', userId)
+        ]);
+
+        const orders = ordersData.data || [];
+        const services = servicesData.data || [];
+        const reviews = reviewsData.data || [];
+
+        const totalRevenue = orders
+          .filter(order => order.status === 'completed')
+          .reduce((sum, order) => sum + (order.price || 0), 0);
+
+        const completedOrders = orders.filter(order => order.status === 'completed').length;
+        const pendingOrders = orders.filter(order => ['pending', 'in_progress'].includes(order.status)).length;
+
+        const averageRating = reviews.length > 0 
+          ? reviews.reduce((sum, review) => sum + (review.rating || 0), 0) / reviews.length 
+          : 0;
+
+        // Get unique clients
+        const uniqueClients = new Set(orders.map(order => order.client_id));
+
+        setAnalytics({
+          totalRevenue,
+          totalOrders: orders.length,
+          completedOrders,
+          pendingOrders,
+          averageRating,
+          totalReviews: reviews.length,
+          totalServices: services.length,
+          totalClients: uniqueClients.size
+        });
+
+      } else {
+        // Fetch client analytics
+        const [ordersData, reviewsData] = await Promise.all([
+          supabase
+            .from('orders')
+            .select('*')
+            .eq('client_id', userId),
+            
+          supabase
+            .from('reviews')
+            .select('*')
+            .eq('client_id', userId)
+        ]);
+
+        const orders = ordersData.data || [];
+        const reviews = reviewsData.data || [];
+
+        const totalSpent = orders
+          .filter(order => order.status === 'completed')
+          .reduce((sum, order) => sum + (order.price || 0), 0);
+
+        const completedOrders = orders.filter(order => order.status === 'completed').length;
+        const pendingOrders = orders.filter(order => ['pending', 'in_progress'].includes(order.status)).length;
+
+        setAnalytics({
+          totalRevenue: totalSpent,
+          totalOrders: orders.length,
+          completedOrders,
+          pendingOrders,
+          averageRating: 0,
+          totalReviews: reviews.length,
+          totalServices: 0,
+          totalClients: 0
+        });
+      }
+
+    } catch (error) {
+      console.error('Error fetching analytics:', error);
+      throw error;
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {[...Array(4)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-8 w-24 mb-2" />
+                <Skeleton className="h-3 w-32" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold tracking-tight">Analytics Dashboard</h1>
-        <Select value={timeframe} onValueChange={setTimeframe}>
-          <SelectTrigger className="w-[180px]">
-            <SelectValue placeholder="Timeframe" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7d">Last 7 days</SelectItem>
-            <SelectItem value="1m">Last month</SelectItem>
-            <SelectItem value="3m">Last 3 months</SelectItem>
-            <SelectItem value="6m">Last 6 months</SelectItem>
-            <SelectItem value="1y">Last year</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <h1 className="text-3xl font-bold tracking-tight">Analytics</h1>
+      
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Total Revenue</CardTitle>
-            <CardDescription>Revenue earned from all services</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">
+              {isFreelancer ? 'Total Revenue' : 'Total Spent'}
+            </CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">$22,700</div>
-            <p className="text-sm text-green-500 flex items-center">
-              +12.5% from previous period
+            <div className="text-2xl font-bold">${analytics?.totalRevenue?.toFixed(2) || '0.00'}</div>
+            <p className="text-xs text-muted-foreground">
+              {isFreelancer ? 'From completed orders' : 'On completed orders'}
             </p>
           </CardContent>
         </Card>
-        
+
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Orders Completed</CardTitle>
-            <CardDescription>Total completed orders</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+            <ShoppingCart className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">178</div>
-            <p className="text-sm text-green-500 flex items-center">
-              +8.2% from previous period
+            <div className="text-2xl font-bold">{analytics?.totalOrders || 0}</div>
+            <p className="text-xs text-muted-foreground">
+              {analytics?.completedOrders || 0} completed, {analytics?.pendingOrders || 0} pending
             </p>
           </CardContent>
         </Card>
-        
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Average Rating</CardTitle>
-            <CardDescription>Average rating from all services</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">4.8/5</div>
-            <p className="text-sm text-green-500 flex items-center">
-              +0.3 from previous period
-            </p>
-          </CardContent>
-        </Card>
-      </div>
 
-      <Tabs defaultValue="revenue">
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="revenue">Revenue</TabsTrigger>
-          <TabsTrigger value="orders">Orders</TabsTrigger>
-          <TabsTrigger value="services">Service Performance</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="revenue">
-          <Card>
-            <CardHeader>
-              <CardTitle>Revenue Over Time</CardTitle>
-              <CardDescription>
-                Monthly revenue for the past six months
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={revenueData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip 
-                      formatter={(value) => [`$${value}`, 'Revenue']}
-                    />
-                    <Bar dataKey="revenue" fill="#8884d8" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="orders">
-          <Card>
-            <CardHeader>
-              <CardTitle>Orders Over Time</CardTitle>
-              <CardDescription>
-                Monthly orders for the past six months
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px]">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={ordersData}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" />
-                    <YAxis />
-                    <Tooltip />
-                    <Line 
-                      type="monotone" 
-                      dataKey="orders" 
-                      stroke="#82ca9d" 
-                      activeDot={{ r: 8 }} 
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-        
-        <TabsContent value="services">
-          <Card>
-            <CardHeader>
-              <CardTitle>Service Performance</CardTitle>
-              <CardDescription>
-                Revenue distribution by service type
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[300px] flex justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={servicePerformanceData}
-                      cx="50%"
-                      cy="50%"
-                      labelLine={false}
-                      label={({ name, percent }) => `${name}: ${(percent * 100).toFixed(0)}%`}
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="value"
-                    >
-                      {servicePerformanceData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value) => [`${value}%`, 'Percentage']} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        {isFreelancer && (
+          <>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Average Rating</CardTitle>
+                <Star className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">
+                  {analytics?.averageRating ? analytics.averageRating.toFixed(1) : 'N/A'}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  From {analytics?.totalReviews || 0} reviews
+                </p>
+              </CardContent>
+            </Card>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Performing Services</CardTitle>
-            <CardDescription>
-              Services with the highest revenue
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span>Logo Design Premium</span>
-                <span className="font-bold">$6,800</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Website Development</span>
-                <span className="font-bold">$5,200</span>
-              </div>
-              <div className="flex justify-between">
-                <span>SEO Optimization</span>
-                <span className="font-bold">$3,900</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Content Writing</span>
-                <span className="font-bold">$2,500</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Social Media Management</span>
-                <span className="font-bold">$1,800</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        
-        <Card>
-          <CardHeader>
-            <CardTitle>Client Demographics</CardTitle>
-            <CardDescription>
-              Where your clients are from
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex justify-between">
-                <span>United States</span>
-                <span className="font-bold">42%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>United Kingdom</span>
-                <span className="font-bold">18%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Canada</span>
-                <span className="font-bold">12%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Australia</span>
-                <span className="font-bold">9%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Germany</span>
-                <span className="font-bold">7%</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Others</span>
-                <span className="font-bold">12%</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-sm font-medium">Total Clients</CardTitle>
+                <Users className="h-4 w-4 text-muted-foreground" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{analytics?.totalClients || 0}</div>
+                <p className="text-xs text-muted-foreground">
+                  Across {analytics?.totalServices || 0} services
+                </p>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {!isFreelancer && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Reviews Given</CardTitle>
+              <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{analytics?.totalReviews || 0}</div>
+              <p className="text-xs text-muted-foreground">
+                Reviews provided to freelancers
+              </p>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
