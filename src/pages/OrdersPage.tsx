@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,7 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { Clock, CheckCircle, AlertTriangle, XCircle, MessageSquare, DollarSign, Bell } from 'lucide-react';
+import { Clock, CheckCircle, AlertTriangle, XCircle, MessageSquare, DollarSign } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Order {
@@ -18,17 +19,19 @@ interface Order {
   created_at: string;
   delivery_date: string | null;
   requirements: string | null;
+  client_id: string;
   service: {
     id: string;
     title: string;
     description: string;
     delivery_time: number;
+    freelancer_id: string;
   };
   package: {
     id: string;
     name: string;
     description: string;
-  };
+  } | null;
   client: {
     id: string;
     full_name: string | null;
@@ -44,10 +47,11 @@ interface Order {
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFreelancer, setIsFreelancer] = useState(false);
   const [activeTab, setActiveTab] = useState('active');
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -63,6 +67,8 @@ export default function OrdersPage() {
       navigate('/auth');
       return;
     }
+    
+    setCurrentUserId(session.user.id);
     
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -80,12 +86,13 @@ export default function OrdersPage() {
       return;
     }
     
-    setIsFreelancer(profile.is_freelancer || false);
+    const userIsFreelancer = profile?.is_freelancer || false;
+    setIsFreelancer(userIsFreelancer);
     
-    fetchOrders(session.user.id, profile.is_freelancer);
+    fetchOrders(session.user.id, userIsFreelancer);
   };
 
-  const fetchOrders = async (userId, userIsFreelancer) => {
+  const fetchOrders = async (userId: string, userIsFreelancer: boolean) => {
     try {
       setLoading(true);
       
@@ -93,27 +100,87 @@ export default function OrdersPage() {
         .from('orders')
         .select(`
           *,
-          service:services(*),
-          package:service_packages(*),
-          client:profiles!orders_client_id_fkey(*),
-          freelancer:profiles!services(*)
+          service:services(
+            id,
+            title,
+            description,
+            delivery_time,
+            freelancer_id
+          ),
+          package:service_packages(
+            id,
+            name,
+            description
+          ),
+          client:profiles!orders_client_id_fkey(
+            id,
+            username,
+            full_name,
+            avatar_url
+          )
         `);
       
       if (userIsFreelancer) {
-        query = query.eq('service.freelancer_id', userId);
+        // For freelancers, get orders where they own the service
+        const { data: servicesData } = await supabase
+          .from('services')
+          .select('id')
+          .eq('freelancer_id', userId);
+        
+        if (servicesData && servicesData.length > 0) {
+          const serviceIds = servicesData.map(s => s.id);
+          query = query.in('service_id', serviceIds);
+        } else {
+          // No services, so no orders
+          setOrders([]);
+          setLoading(false);
+          return;
+        }
       } else {
+        // For clients, get orders they placed
         query = query.eq('client_id', userId);
       }
       
-      const { data, error } = await query;
+      const { data: ordersData, error } = await query.order('created_at', { ascending: false });
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error fetching orders:', error);
+        throw error;
+      }
       
-      const sortedOrders = data ? data.sort((a, b) => 
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-      ) : [];
+      // Get freelancer details for each order
+      const ordersWithFreelancers = await Promise.all(
+        (ordersData || []).map(async (order) => {
+          if (order.service?.freelancer_id) {
+            const { data: freelancerData } = await supabase
+              .from('profiles')
+              .select('id, username, full_name, avatar_url')
+              .eq('id', order.service.freelancer_id)
+              .single();
+            
+            return {
+              ...order,
+              freelancer: freelancerData || {
+                id: order.service.freelancer_id,
+                username: 'Unknown',
+                full_name: null,
+                avatar_url: null
+              }
+            };
+          }
+          return {
+            ...order,
+            freelancer: {
+              id: 'unknown',
+              username: 'Unknown',
+              full_name: null,
+              avatar_url: null
+            }
+          };
+        })
+      );
       
-      setOrders(sortedOrders);
+      setOrders(ordersWithFreelancers);
       setLoading(false);
     } catch (error) {
       console.error('Error fetching orders:', error);
@@ -126,7 +193,7 @@ export default function OrdersPage() {
     }
   };
 
-  const updateOrderStatus = async (orderId, newStatus) => {
+  const updateOrderStatus = async (orderId: string, newStatus: string) => {
     try {
       const { error } = await supabase
         .from('orders')
@@ -138,13 +205,14 @@ export default function OrdersPage() {
       setOrders(prev => 
         prev.map(order => 
           order.id === orderId 
-            ? { ...order, status: newStatus } 
+            ? { ...order, status: newStatus as any } 
             : order
         )
       );
       
+      // Send notification
       const orderToUpdate = orders.find(order => order.id === orderId);
-      if (orderToUpdate) {
+      if (orderToUpdate && currentUserId) {
         const recipientId = isFreelancer ? orderToUpdate.client_id : orderToUpdate.service.freelancer_id;
         const title = `Order status updated to ${newStatus.replace('_', ' ')}`;
         const content = `Order for "${orderToUpdate.service.title}" has been ${newStatus.replace('_', ' ')}.`;
@@ -171,36 +239,11 @@ export default function OrdersPage() {
     }
   };
 
-  const handleContactButtonClick = (userId) => {
+  const handleContactButtonClick = (userId: string) => {
     navigate('/dashboard/messages', { state: { contactId: userId } });
   };
 
-  const formatDate = (timestamp: string) => {
-    return new Date(timestamp).toLocaleDateString([], {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric'
-    });
-  };
-
-  const getStatusBadgeVariant = (status: string) => {
-    switch (status) {
-      case 'pending':
-        return { variant: 'secondary', icon: <Clock className="h-3 w-3 mr-1" /> };
-      case 'in_progress':
-        return { variant: 'default', icon: <Clock className="h-3 w-3 mr-1" /> };
-      case 'completed':
-        return { variant: 'secondary', icon: <CheckCircle className="h-3 w-3 mr-1" /> };
-      case 'revision':
-        return { variant: 'outline', icon: <AlertTriangle className="h-3 w-3 mr-1" /> };
-      case 'cancelled':
-        return { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> };
-      default:
-        return { variant: 'secondary', icon: null };
-    }
-  };
-
-  const filterOrdersByStatus = (status) => {
+  const filterOrdersByStatus = (status: string) => {
     switch (status) {
       case 'active':
         return orders.filter(order => 
@@ -215,80 +258,33 @@ export default function OrdersPage() {
     }
   };
 
-  const renderOrderActions = (order) => {
-    if (isFreelancer) {
-      switch (order.status) {
-        case 'pending':
-          return (
-            <div className="flex space-x-2">
-              <Button 
-                size="sm" 
-                onClick={() => updateOrderStatus(order.id, 'in_progress')}
-              >
-                Accept
-              </Button>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => updateOrderStatus(order.id, 'cancelled')}
-              >
-                Decline
-              </Button>
-            </div>
-          );
-        case 'in_progress':
-          return (
-            <div className="flex space-x-2">
-              <Button 
-                size="sm" 
-                onClick={() => updateOrderStatus(order.id, 'completed')}
-              >
-                Mark as Delivered
-              </Button>
-            </div>
-          );
-        case 'revision':
-          return (
-            <div className="flex space-x-2">
-              <Button 
-                size="sm" 
-                onClick={() => updateOrderStatus(order.id, 'completed')}
-              >
-                Submit Revision
-              </Button>
-            </div>
-          );
-        default:
-          return null;
-      }
-    } else {
-      switch (order.status) {
-        case 'in_progress':
-          return (
-            <div className="flex space-x-2">
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => updateOrderStatus(order.id, 'cancelled')}
-              >
-                Cancel Order
-              </Button>
-            </div>
-          );
-        case 'completed':
-          return (
-            <div className="flex space-x-2">
-              <Button 
-                size="sm" 
-                onClick={() => updateOrderStatus(order.id, 'revision')}
-              >
-                Request Revision
-              </Button>
-            </div>
-          );
-        default:
-          return null;
-      }
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'pending':
+        return <Clock className="h-3 w-3 mr-1" />;
+      case 'in_progress':
+        return <Clock className="h-3 w-3 mr-1" />;
+      case 'completed':
+        return <CheckCircle className="h-3 w-3 mr-1" />;
+      case 'revision':
+        return <AlertTriangle className="h-3 w-3 mr-1" />;
+      case 'cancelled':
+        return <XCircle className="h-3 w-3 mr-1" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'secondary';
+      case 'cancelled':
+        return 'destructive';
+      case 'revision':
+        return 'outline';
+      default:
+        return 'default';
     }
   };
 
@@ -350,161 +346,150 @@ export default function OrdersPage() {
                   </div>
                 ) : filterOrdersByStatus(tabValue).length > 0 ? (
                   <div className="space-y-4">
-                    {filterOrdersByStatus(tabValue).map((order) => {
-                      const statusBadge = getStatusBadgeVariant(order.status);
-                      
-                      return (
-                        <Card key={order.id} className="overflow-hidden">
-                          <div className={`p-4 ${isMobile ? 'p-3' : 'p-6'}`}>
-                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                              <div className="space-y-1">
-                                <div className="flex items-center flex-wrap gap-2">
-                                  <h3 className="font-medium text-lg">{order.service?.title || "Untitled Service"}</h3>
-                                  <Badge className="ml-2" variant={
-                                    order.status === 'completed' ? 'secondary' : 
-                                    order.status === 'cancelled' ? 'destructive' : 
-                                    order.status === 'revision' ? 'outline' : 'default'
-                                  }>
-                                    <div className="flex items-center">
-                                      {order.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
-                                      {order.status === 'in_progress' && <Clock className="h-3 w-3 mr-1" />}
-                                      {order.status === 'completed' && <CheckCircle className="h-3 w-3 mr-1" />}
-                                      {order.status === 'revision' && <AlertTriangle className="h-3 w-3 mr-1" />}
-                                      {order.status === 'cancelled' && <XCircle className="h-3 w-3 mr-1" />}
-                                      <span>
-                                        {order.status.charAt(0).toUpperCase() + order.status.slice(1).replace('_', ' ')}
-                                      </span>
-                                    </div>
-                                  </Badge>
-                                </div>
-                                <p className="text-muted-foreground">
-                                  {order.package?.name || "Standard"} Package
-                                </p>
+                    {filterOrdersByStatus(tabValue).map((order) => (
+                      <Card key={order.id} className="overflow-hidden">
+                        <div className={`p-4 ${isMobile ? 'p-3' : 'p-6'}`}>
+                          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                              <div className="flex items-center flex-wrap gap-2">
+                                <h3 className="font-medium text-lg">{order.service?.title || "Untitled Service"}</h3>
+                                <Badge variant={getStatusVariant(order.status)}>
+                                  <div className="flex items-center">
+                                    {getStatusIcon(order.status)}
+                                    <span>
+                                      {order.status.charAt(0).toUpperCase() + order.status.slice(1).replace('_', ' ')}
+                                    </span>
+                                  </div>
+                                </Badge>
                               </div>
-                              
-                              <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4">
-                                <div className="flex items-center">
-                                  <DollarSign className="h-4 w-4 text-muted-foreground mr-1" />
-                                  <span className="font-medium">${order.price}</span>
-                                </div>
-                                <div className="flex items-center">
-                                  <Clock className="h-4 w-4 text-muted-foreground mr-1" />
-                                  <span>Created: {new Date(order.created_at).toLocaleDateString()}</span>
-                                </div>
+                              <p className="text-muted-foreground">
+                                {order.package?.name || "Standard"} Package
+                              </p>
+                            </div>
+                            
+                            <div className="flex flex-col md:flex-row items-start md:items-center gap-2 md:gap-4">
+                              <div className="flex items-center">
+                                <DollarSign className="h-4 w-4 text-muted-foreground mr-1" />
+                                <span className="font-medium">${order.price}</span>
+                              </div>
+                              <div className="flex items-center">
+                                <Clock className="h-4 w-4 text-muted-foreground mr-1" />
+                                <span>Created: {new Date(order.created_at).toLocaleDateString()}</span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <Separator className="my-4" />
+                          
+                          <div className="flex flex-col md:flex-row justify-between gap-4">
+                            <div className="flex items-center">
+                              <Avatar className="h-10 w-10 mr-3">
+                                <AvatarImage 
+                                  src={isFreelancer ? order.client?.avatar_url || '' : order.freelancer?.avatar_url || ''} 
+                                  alt={isFreelancer ? order.client?.username : order.freelancer?.username} 
+                                />
+                                <AvatarFallback>
+                                  {isFreelancer 
+                                    ? (order.client?.full_name?.[0] || order.client?.username?.[0] || 'C').toUpperCase()
+                                    : (order.freelancer?.full_name?.[0] || order.freelancer?.username?.[0] || 'F').toUpperCase()
+                                  }
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <p className="font-medium">
+                                  {isFreelancer 
+                                    ? (order.client?.full_name || order.client?.username || 'Client')
+                                    : (order.freelancer?.full_name || order.freelancer?.username || 'Freelancer')
+                                  }
+                                </p>
+                                <p className="text-sm text-muted-foreground">
+                                  {isFreelancer ? 'Client' : 'Freelancer'}
+                                </p>
                               </div>
                             </div>
                             
-                            <Separator className="my-4" />
-                            
-                            <div className="flex flex-col md:flex-row justify-between gap-4">
-                              <div className="flex items-center">
-                                <Avatar className="h-10 w-10 mr-3">
-                                  <AvatarImage 
-                                    src={isFreelancer ? order.client?.avatar_url || '' : order.freelancer?.avatar_url || ''} 
-                                    alt={isFreelancer ? order.client?.username : order.freelancer?.username} 
-                                  />
-                                  <AvatarFallback>
-                                    {isFreelancer 
-                                      ? (order.client?.full_name?.[0] || order.client?.username?.[0] || 'C').toUpperCase()
-                                      : (order.freelancer?.full_name?.[0] || order.freelancer?.username?.[0] || 'F').toUpperCase()
-                                    }
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <p className="font-medium">
-                                    {isFreelancer 
-                                      ? (order.client?.full_name || order.client?.username || 'Client')
-                                      : (order.freelancer?.full_name || order.freelancer?.username || 'Freelancer')
-                                    }
-                                  </p>
-                                  <p className="text-sm text-muted-foreground">
-                                    {isFreelancer ? 'Client' : 'Freelancer'}
-                                  </p>
-                                </div>
-                              </div>
+                            <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} space-y-2 md:space-y-0 space-x-0 md:space-x-2 items-${isMobile ? 'stretch' : 'center'}`}>
+                              <Button 
+                                variant="outline" 
+                                size={isMobile ? "sm" : "default"}
+                                onClick={() => handleContactButtonClick(
+                                  isFreelancer ? order.client?.id : order.freelancer?.id || ''
+                                )}
+                                className="w-full md:w-auto"
+                              >
+                                <MessageSquare className="h-4 w-4 mr-2" />
+                                Contact
+                              </Button>
                               
-                              <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} space-y-2 md:space-y-0 space-x-0 md:space-x-2 items-${isMobile ? 'stretch' : 'center'}`}>
-                                <Button 
-                                  variant="outline" 
-                                  size={isMobile ? "sm" : "default"}
-                                  onClick={() => handleContactButtonClick(
-                                    isFreelancer ? order.client?.id : order.freelancer?.id || ''
-                                  )}
-                                  className="w-full md:w-auto"
-                                >
-                                  <MessageSquare className="h-4 w-4 mr-2" />
-                                  Contact
-                                </Button>
-                                
-                                {isFreelancer ? (
-                                  order.status === 'pending' ? (
-                                    <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} space-y-2 md:space-y-0 space-x-0 md:space-x-2`}>
-                                      <Button 
-                                        size={isMobile ? "sm" : "default"}
-                                        onClick={() => updateOrderStatus(order.id, 'in_progress')}
-                                        className="w-full md:w-auto"
-                                      >
-                                        Accept
-                                      </Button>
-                                      <Button 
-                                        size={isMobile ? "sm" : "default"}
-                                        variant="outline" 
-                                        onClick={() => updateOrderStatus(order.id, 'cancelled')}
-                                        className="w-full md:w-auto"
-                                      >
-                                        Decline
-                                      </Button>
-                                    </div>
-                                  ) : order.status === 'in_progress' ? (
+                              {/* Action buttons based on role and status */}
+                              {isFreelancer ? (
+                                order.status === 'pending' ? (
+                                  <div className={`flex ${isMobile ? 'flex-col' : 'flex-row'} space-y-2 md:space-y-0 space-x-0 md:space-x-2`}>
                                     <Button 
                                       size={isMobile ? "sm" : "default"}
-                                      onClick={() => updateOrderStatus(order.id, 'completed')}
+                                      onClick={() => updateOrderStatus(order.id, 'in_progress')}
                                       className="w-full md:w-auto"
                                     >
-                                      Mark as Delivered
+                                      Accept
                                     </Button>
-                                  ) : order.status === 'revision' ? (
-                                    <Button 
-                                      size={isMobile ? "sm" : "default"}
-                                      onClick={() => updateOrderStatus(order.id, 'completed')}
-                                      className="w-full md:w-auto"
-                                    >
-                                      Submit Revision
-                                    </Button>
-                                  ) : null
-                                ) : (
-                                  order.status === 'in_progress' ? (
                                     <Button 
                                       size={isMobile ? "sm" : "default"}
                                       variant="outline" 
                                       onClick={() => updateOrderStatus(order.id, 'cancelled')}
                                       className="w-full md:w-auto"
                                     >
-                                      Cancel Order
+                                      Decline
                                     </Button>
-                                  ) : order.status === 'completed' ? (
-                                    <Button 
-                                      size={isMobile ? "sm" : "default"}
-                                      onClick={() => updateOrderStatus(order.id, 'revision')}
-                                      className="w-full md:w-auto"
-                                    >
-                                      Request Revision
-                                    </Button>
-                                  ) : null
-                                )}
-                              </div>
+                                  </div>
+                                ) : order.status === 'in_progress' ? (
+                                  <Button 
+                                    size={isMobile ? "sm" : "default"}
+                                    onClick={() => updateOrderStatus(order.id, 'completed')}
+                                    className="w-full md:w-auto"
+                                  >
+                                    Mark as Delivered
+                                  </Button>
+                                ) : order.status === 'revision' ? (
+                                  <Button 
+                                    size={isMobile ? "sm" : "default"}
+                                    onClick={() => updateOrderStatus(order.id, 'completed')}
+                                    className="w-full md:w-auto"
+                                  >
+                                    Submit Revision
+                                  </Button>
+                                ) : null
+                              ) : (
+                                order.status === 'in_progress' ? (
+                                  <Button 
+                                    size={isMobile ? "sm" : "default"}
+                                    variant="outline" 
+                                    onClick={() => updateOrderStatus(order.id, 'cancelled')}
+                                    className="w-full md:w-auto"
+                                  >
+                                    Cancel Order
+                                  </Button>
+                                ) : order.status === 'completed' ? (
+                                  <Button 
+                                    size={isMobile ? "sm" : "default"}
+                                    onClick={() => updateOrderStatus(order.id, 'revision')}
+                                    className="w-full md:w-auto"
+                                  >
+                                    Request Revision
+                                  </Button>
+                                ) : null
+                              )}
                             </div>
-                            
-                            {order.requirements && (
-                              <div className="mt-4 p-4 bg-muted rounded-lg">
-                                <h4 className="font-medium mb-2">Requirements:</h4>
-                                <p className="text-sm">{order.requirements}</p>
-                              </div>
-                            )}
                           </div>
-                        </Card>
-                      );
-                    })}
+                          
+                          {order.requirements && (
+                            <div className="mt-4 p-4 bg-muted rounded-lg">
+                              <h4 className="font-medium mb-2">Requirements:</h4>
+                              <p className="text-sm">{order.requirements}</p>
+                            </div>
+                          )}
+                        </div>
+                      </Card>
+                    ))}
                   </div>
                 ) : (
                   <div className="text-center py-12">
@@ -520,7 +505,7 @@ export default function OrdersPage() {
                     {!isFreelancer && tabValue === 'active' && (
                       <Button
                         className="mt-4"
-                        onClick={() => navigate('/dashboard/browse-services')}
+                        onClick={() => navigate('/services')}
                       >
                         Browse Services
                       </Button>
@@ -535,4 +520,3 @@ export default function OrdersPage() {
     </div>
   );
 }
-

@@ -9,7 +9,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
-import { Send, ArrowLeft, MoreVertical, Phone, Video } from 'lucide-react';
+import { Send, ArrowLeft, Phone, Video } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 interface Message {
@@ -59,7 +59,6 @@ export default function MessagesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const conversationsScrollRef = useRef<HTMLDivElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
@@ -76,6 +75,8 @@ export default function MessagesPage() {
   useEffect(() => {
     if (currentUserId) {
       fetchConversations();
+      
+      // Set up real-time subscription for messages
       const messagesSubscription = supabase
         .channel('public:messages')
         .on('postgres_changes', {
@@ -116,7 +117,6 @@ export default function MessagesPage() {
       return;
     }
     setCurrentUserId(data.session.user.id);
-    console.log('Current User ID:', data.session.user.id); // Debugging log
   };
 
   const handleDirectContact = async (contactId: string) => {
@@ -132,7 +132,7 @@ export default function MessagesPage() {
       if (profile) {
         setSelectedUser(contactId);
         setSelectedUserDetails({
-          username: profile.username,
+          username: profile.username || 'Unknown User',
           fullName: profile.full_name,
           avatarUrl: profile.avatar_url,
         });
@@ -169,10 +169,7 @@ export default function MessagesPage() {
 
       if (messagesError) throw messagesError;
 
-      console.log('Fetched messages:', messagesData); // Debugging log
-
       if (!messagesData || messagesData.length === 0) {
-        console.log('No messages found for user:', currentUserId);
         setConversations([]);
         setLoading(false);
         return;
@@ -180,23 +177,14 @@ export default function MessagesPage() {
 
       const conversationsMap = new Map<string, Conversation>();
 
-      messagesData.forEach((message: any, index: number) => {
-        console.log(`Processing message ${index}:`, message); // Debugging log
-
+      messagesData.forEach((message: any) => {
         const isUserSender = message.sender_id === currentUserId;
         const otherUserId = isUserSender ? message.receiver_id : message.sender_id;
         const otherUserData = isUserSender ? message.receiver : message.sender;
 
-        console.log('Other User ID:', otherUserId);
-        console.log('Other User Data:', otherUserData);
+        if (!otherUserId || !otherUserData) return;
 
-        if (!otherUserId) {
-          console.log('Skipping message due to missing otherUserId');
-          return;
-        }
-
-        const fallbackUsername = otherUserId;
-        const username = otherUserData?.username || fallbackUsername;
+        const username = otherUserData?.username || 'Unknown User';
         const fullName = otherUserData?.full_name || null;
         const avatarUrl = otherUserData?.avatar_url || null;
 
@@ -231,30 +219,6 @@ export default function MessagesPage() {
       const sortedConversations = Array.from(conversationsMap.values()).sort(
         (a, b) => new Date(b.lastMessageDate).getTime() - new Date(a.lastMessageDate).getTime()
       );
-
-      console.log('Sorted conversations:', sortedConversations); // Debugging log
-
-      if (sortedConversations.length === 0 && messagesData.length > 0) {
-        console.log('Forcing a conversation for Ravi since no conversations were created');
-        const raviMessage = messagesData.find(
-          (msg: any) =>
-            msg.sender?.username === 'ravi' || msg.receiver?.username === 'ravi'
-        );
-        if (raviMessage) {
-          const isUserSender = raviMessage.sender_id === currentUserId;
-          const otherUserId = isUserSender ? raviMessage.receiver_id : raviMessage.sender_id;
-          const otherUserData = isUserSender ? raviMessage.receiver : raviMessage.sender;
-          sortedConversations.push({
-            userId: otherUserId || 'ravi_id',
-            username: otherUserData?.username || 'ravi',
-            fullName: otherUserData?.full_name || 'Ravi',
-            avatarUrl: otherUserData?.avatar_url || null,
-            lastMessage: raviMessage.content || 'hello',
-            lastMessageDate: raviMessage.created_at || new Date().toISOString(),
-            unreadCount: 0,
-          });
-        }
-      }
 
       setConversations(sortedConversations);
 
@@ -295,10 +259,9 @@ export default function MessagesPage() {
 
       if (error) throw error;
 
-      console.log('Fetched messages for user:', userId, data); // Debugging log
-
       setMessages(data || []);
 
+      // Mark messages as read
       const unreadMessages = data
         ?.filter((msg) => msg.receiver_id === currentUserId && !msg.is_read)
         .map((msg) => msg.id);
@@ -340,6 +303,7 @@ export default function MessagesPage() {
 
       setNewMessage('');
       fetchMessages(selectedUser);
+      fetchConversations();
     } catch (error) {
       console.error('Error sending message:', error);
       toast({
@@ -351,8 +315,6 @@ export default function MessagesPage() {
   };
 
   const selectConversation = (userId: string, username: string, fullName: string | null, avatarUrl: string | null) => {
-    const scrollPosition = conversationsScrollRef.current?.scrollTop || 0;
-
     setSelectedUser(userId);
     setSelectedUserDetails({
       username,
@@ -363,17 +325,11 @@ export default function MessagesPage() {
     if (isMobile) {
       setShowConversations(false);
     }
-
-    setTimeout(() => {
-      if (conversationsScrollRef.current) {
-        conversationsScrollRef.current.scrollTop = scrollPosition;
-      }
-    }, 0);
   };
 
   const scrollToBottom = () => {
-    if (messagesScrollRef.current) {
-      messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   };
 
@@ -399,11 +355,11 @@ export default function MessagesPage() {
   if (isMobile) {
     if (showConversations) {
       return (
-        <div className="h-screen flex flex-col bg-gray-100">
+        <div className="h-screen flex flex-col bg-gray-50">
           <div className="bg-white border-b px-4 py-3 sticky top-0 z-10 shadow-sm">
             <h1 className="text-xl font-semibold">Messages</h1>
           </div>
-          <ScrollArea className="flex-1">
+          <div className="flex-1 overflow-hidden">
             {loading ? (
               <div className="p-4 space-y-4">
                 {[...Array(5)].map((_, i) => (
@@ -417,7 +373,7 @@ export default function MessagesPage() {
                 ))}
               </div>
             ) : conversations.length > 0 ? (
-              <div className="divide-y">
+              <div className="divide-y bg-white">
                 {conversations.map((conversation) => (
                   <div
                     key={conversation.userId}
@@ -464,18 +420,18 @@ export default function MessagesPage() {
                 </div>
               </div>
             )}
-          </ScrollArea>
+          </div>
         </div>
       );
     }
 
     // Chat view for mobile
     return (
-      <div className="h-screen flex flex-col bg-gray-100">
+      <div className="h-screen flex flex-col bg-white">
         {selectedUserDetails && (
           <>
-            {/* Sticky Header */}
-            <div className="bg-white border-b px-4 py-3 flex items-center space-x-3 sticky top-0 z-10 shadow-sm">
+            {/* Header */}
+            <div className="bg-white border-b px-4 py-3 flex items-center space-x-3 shadow-sm">
               <Button variant="ghost" size="icon" onClick={goBackToConversations} className="h-8 w-8">
                 <ArrowLeft className="h-4 w-4" />
               </Button>
@@ -497,50 +453,57 @@ export default function MessagesPage() {
               </Button>
             </div>
 
-            {/* Scrollable Messages */}
-            <ScrollArea className="flex-1 p-4 bg-white" viewportRef={messagesScrollRef}>
-              <div className="space-y-4 min-h-full">
-                {messages.length > 0 ? (
-                  messages.map((message) => {
-                    const isCurrentUser = message.sender_id === currentUserId;
-                    return (
-                      <div key={message.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                        <div className={`max-w-[80%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
-                          <div
-                            className={`px-4 py-2 rounded-lg ${
-                              isCurrentUser ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-900 rounded-bl-none'
-                            }`}
-                          >
-                            <p className="text-sm">{message.content}</p>
+            {/* Messages */}
+            <div className="flex-1 overflow-hidden">
+              <ScrollArea className="h-full" viewportRef={messagesScrollRef}>
+                <div className="p-4 space-y-4 min-h-full">
+                  {messages.length > 0 ? (
+                    messages.map((message) => {
+                      const isCurrentUser = message.sender_id === currentUserId;
+                      return (
+                        <div key={message.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[80%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
+                            <div
+                              className={`px-4 py-2 rounded-lg ${
+                                isCurrentUser ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-900 rounded-bl-none'
+                              }`}
+                            >
+                              <p className="text-sm break-words">{message.content}</p>
+                            </div>
+                            <span
+                              className={`text-xs text-gray-500 mt-1 block ${isCurrentUser ? 'text-right' : 'text-left'}`}
+                            >
+                              {formatMessageDate(message.created_at)}
+                            </span>
                           </div>
-                          <span
-                            className={`text-xs text-gray-500 mt-1 block ${isCurrentUser ? 'text-right' : 'text-left'}`}
-                          >
-                            {formatMessageDate(message.created_at)}
-                          </span>
                         </div>
-                      </div>
-                    );
-                  })
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-gray-500 text-sm">No messages yet. Start a conversation!</p>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
+                      );
+                    })
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-gray-500 text-sm">No messages yet. Start a conversation!</p>
+                    </div>
+                  )}
+                  <div ref={messagesEndRef} />
+                </div>
+              </ScrollArea>
+            </div>
 
-            {/* Sticky Message Input */}
-            <div className="sticky bottom-0 bg-white border-t z-10">
-              <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-2">
+            {/* Message Input - Sticky at bottom */}
+            <div className="bg-white border-t p-4">
+              <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
                 <Input
                   placeholder="Message..."
                   value={newMessage}
                   onChange={(e) => setNewMessage(e.target.value)}
                   className="flex-1 rounded-full border-gray-300 focus:ring-blue-500"
                 />
-                <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-full h-10 w-10 bg-blue-500 hover:bg-blue-600">
+                <Button 
+                  type="submit" 
+                  size="icon" 
+                  disabled={!newMessage.trim()} 
+                  className="rounded-full h-10 w-10 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
+                >
                   <Send className="h-4 w-4 text-white" />
                 </Button>
               </form>
@@ -561,81 +524,83 @@ export default function MessagesPage() {
         <div className="grid grid-cols-[300px_1fr] h-full">
           {/* Conversations list */}
           <div className="border-r bg-white">
-            <div className="p-4 border-b sticky top-0 bg-white z-10">
+            <div className="p-4 border-b">
               <h2 className="font-semibold text-gray-700">Conversations</h2>
             </div>
-            <ScrollArea className="h-[calc(100vh-180px)]" viewportRef={conversationsScrollRef}>
-              {loading ? (
-                <div className="space-y-4 p-4">
-                  {[...Array(5)].map((_, i) => (
-                    <div key={i} className="flex items-center space-x-3 animate-pulse p-4">
-                      <div className="h-10 w-10 rounded-full bg-gray-200" />
-                      <div className="space-y-2 flex-1">
-                        <div className="h-4 bg-gray-200 rounded w-1/3" />
-                        <div className="h-3 bg-gray-200 rounded w-1/2" />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : conversations.length > 0 ? (
-                <div>
-                  {conversations.map((conversation) => (
-                    <div
-                      key={conversation.userId}
-                      className={`flex items-center space-x-3 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors duration-200 relative ${
-                        selectedUser === conversation.userId ? 'bg-gray-100 border-r-2 border-blue-500' : ''
-                      }`}
-                      onClick={() =>
-                        selectConversation(
-                          conversation.userId,
-                          conversation.username,
-                          conversation.fullName,
-                          conversation.avatarUrl
-                        )
-                      }
-                    >
-                      <Avatar className="h-10 w-10">
-                        <AvatarImage src={conversation.avatarUrl || ''} />
-                        <AvatarFallback>
-                          {(conversation.fullName?.charAt(0) || conversation.username.charAt(0) || 'U').toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-baseline">
-                          <h4 className="font-medium text-sm truncate">
-                            {conversation.fullName || conversation.username}
-                          </h4>
-                          <span className="text-xs text-gray-500 flex-shrink-0">
-                            {format(new Date(conversation.lastMessageDate), 'MMM d')}
-                          </span>
+            <div className="h-[calc(100vh-180px)] overflow-hidden">
+              <ScrollArea className="h-full">
+                {loading ? (
+                  <div className="space-y-4 p-4">
+                    {[...Array(5)].map((_, i) => (
+                      <div key={i} className="flex items-center space-x-3 animate-pulse p-4">
+                        <div className="h-10 w-10 rounded-full bg-gray-200" />
+                        <div className="space-y-2 flex-1">
+                          <div className="h-4 bg-gray-200 rounded w-1/3" />
+                          <div className="h-3 bg-gray-200 rounded w-1/2" />
                         </div>
-                        <p className="text-xs text-gray-500 truncate">{conversation.lastMessage}</p>
                       </div>
-                      {conversation.unreadCount > 0 && (
-                        <div className="bg-blue-500 text-white h-5 min-w-5 rounded-full flex items-center justify-center text-xs font-medium">
-                          {conversation.unreadCount}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex items-center justify-center h-full p-4 text-center">
-                  <div>
-                    <h3 className="font-medium text-gray-700">No conversations yet</h3>
-                    <p className="text-gray-500 text-sm mt-1">Messages will appear here when you start chatting</p>
+                    ))}
                   </div>
-                </div>
-              )}
-            </ScrollArea>
+                ) : conversations.length > 0 ? (
+                  <div>
+                    {conversations.map((conversation) => (
+                      <div
+                        key={conversation.userId}
+                        className={`flex items-center space-x-3 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors duration-200 ${
+                          selectedUser === conversation.userId ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                        }`}
+                        onClick={() =>
+                          selectConversation(
+                            conversation.userId,
+                            conversation.username,
+                            conversation.fullName,
+                            conversation.avatarUrl
+                          )
+                        }
+                      >
+                        <Avatar className="h-10 w-10">
+                          <AvatarImage src={conversation.avatarUrl || ''} />
+                          <AvatarFallback>
+                            {(conversation.fullName?.charAt(0) || conversation.username.charAt(0) || 'U').toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex justify-between items-baseline">
+                            <h4 className="font-medium text-sm truncate">
+                              {conversation.fullName || conversation.username}
+                            </h4>
+                            <span className="text-xs text-gray-500">
+                              {format(new Date(conversation.lastMessageDate), 'MMM d')}
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 truncate">{conversation.lastMessage}</p>
+                        </div>
+                        {conversation.unreadCount > 0 && (
+                          <div className="bg-blue-500 text-white h-5 min-w-5 rounded-full flex items-center justify-center text-xs font-medium">
+                            {conversation.unreadCount}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-full p-4 text-center">
+                    <div>
+                      <h3 className="font-medium text-gray-700">No conversations yet</h3>
+                      <p className="text-gray-500 text-sm mt-1">Messages will appear here when you start chatting</p>
+                    </div>
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
           </div>
 
           {/* Messages area */}
           <div className="flex flex-col bg-white h-full">
             {selectedUser && selectedUserDetails ? (
               <>
-                {/* Sticky Header */}
-                <div className="px-6 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
+                {/* Header */}
+                <div className="px-6 py-4 border-b flex items-center justify-between bg-white">
                   <div className="flex items-center space-x-3">
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={selectedUserDetails.avatarUrl || ''} />
@@ -655,17 +620,13 @@ export default function MessagesPage() {
                     <Button variant="ghost" size="icon">
                       <Video className="h-4 w-4 text-gray-600" />
                     </Button>
-                    <Button variant="ghost" size="icon">
-                      <MoreVertical className="h-4 w-4 text-gray-600" />
-                    </Button>
                   </div>
                 </div>
 
-                {/* Messages and Input Container */}
-                <div className="flex flex-col flex-1 overflow-hidden">
-                  {/* Scrollable Messages */}
-                  <ScrollArea className="flex-1 p-6" viewportRef={messagesScrollRef}>
-                    <div className="space-y-4 min-h-full">
+                {/* Messages */}
+                <div className="flex-1 overflow-hidden">
+                  <ScrollArea className="h-full" viewportRef={messagesScrollRef}>
+                    <div className="p-6 space-y-4 min-h-full">
                       {messages.length > 0 ? (
                         messages.map((message) => {
                           const isCurrentUser = message.sender_id === currentUserId;
@@ -677,7 +638,7 @@ export default function MessagesPage() {
                                     isCurrentUser ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-900 rounded-bl-none'
                                   }`}
                                 >
-                                  <p className="text-sm">{message.content}</p>
+                                  <p className="text-sm break-words">{message.content}</p>
                                 </div>
                                 <span
                                   className={`text-xs text-gray-500 mt-1 block ${isCurrentUser ? 'text-right' : 'text-left'}`}
@@ -696,21 +657,26 @@ export default function MessagesPage() {
                       <div ref={messagesEndRef} />
                     </div>
                   </ScrollArea>
+                </div>
 
-                  {/* Sticky Message Input */}
-                  <div className="sticky bottom-0 bg-white border-t z-10">
-                    <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-2">
-                      <Input
-                        placeholder="Type your message..."
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        className="flex-1 rounded-full border-gray-300 focus:ring-blue-500"
-                      />
-                      <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-full h-10 w-10 bg-blue-500 hover:bg-blue-600">
-                        <Send className="h-4 w-4 text-white" />
-                      </Button>
-                    </form>
-                  </div>
+                {/* Message Input - Sticky at bottom */}
+                <div className="bg-white border-t p-4">
+                  <form onSubmit={handleSendMessage} className="flex items-center space-x-2">
+                    <Input
+                      placeholder="Type your message..."
+                      value={newMessage}
+                      onChange={(e) => setNewMessage(e.target.value)}
+                      className="flex-1 rounded-full border-gray-300 focus:ring-blue-500"
+                    />
+                    <Button 
+                      type="submit" 
+                      size="icon" 
+                      disabled={!newMessage.trim()} 
+                      className="rounded-full h-10 w-10 bg-blue-500 hover:bg-blue-600 disabled:opacity-50"
+                    >
+                      <Send className="h-4 w-4 text-white" />
+                    </Button>
+                  </form>
                 </div>
               </>
             ) : (
