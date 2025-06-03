@@ -59,6 +59,8 @@ export default function MessagesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const conversationsScrollRef = useRef<HTMLDivElement>(null);
+  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -155,7 +157,6 @@ export default function MessagesPage() {
     try {
       setLoading(true);
 
-      // Fetch messages where the current user is either sender or receiver
       const { data: messagesData, error: messagesError } = await supabase
         .from('messages')
         .select(`
@@ -186,18 +187,15 @@ export default function MessagesPage() {
         const otherUserId = isUserSender ? message.receiver_id : message.sender_id;
         const otherUserData = isUserSender ? message.receiver : message.sender;
 
-        // Log the extracted data
         console.log('Other User ID:', otherUserId);
         console.log('Other User Data:', otherUserData);
 
-        // Skip if otherUserId is missing
         if (!otherUserId) {
           console.log('Skipping message due to missing otherUserId');
           return;
         }
 
-        // Provide fallback values if otherUserData is missing
-        const fallbackUsername = otherUserId; // Use ID as fallback if username is missing
+        const fallbackUsername = otherUserId;
         const username = otherUserData?.username || fallbackUsername;
         const fullName = otherUserData?.full_name || null;
         const avatarUrl = otherUserData?.avatar_url || null;
@@ -236,7 +234,6 @@ export default function MessagesPage() {
 
       console.log('Sorted conversations:', sortedConversations); // Debugging log
 
-      // If conversations are still empty but messages exist, force a conversation for "Ravi"
       if (sortedConversations.length === 0 && messagesData.length > 0) {
         console.log('Forcing a conversation for Ravi since no conversations were created');
         const raviMessage = messagesData.find(
@@ -354,6 +351,9 @@ export default function MessagesPage() {
   };
 
   const selectConversation = (userId: string, username: string, fullName: string | null, avatarUrl: string | null) => {
+    // Capture the current scroll position of the conversations list
+    const scrollPosition = conversationsScrollRef.current?.scrollTop || 0;
+
     setSelectedUser(userId);
     setSelectedUserDetails({
       username,
@@ -364,10 +364,20 @@ export default function MessagesPage() {
     if (isMobile) {
       setShowConversations(false);
     }
+
+    // Restore the scroll position after the state update
+    setTimeout(() => {
+      if (conversationsScrollRef.current) {
+        conversationsScrollRef.current.scrollTop = scrollPosition;
+      }
+    }, 0);
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only scroll the messages area to the bottom
+    if (messagesScrollRef.current) {
+      messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+    }
   };
 
   const formatMessageDate = (dateString: string) => {
@@ -491,7 +501,7 @@ export default function MessagesPage() {
             </div>
 
             {/* Scrollable Messages */}
-            <ScrollArea className="flex-1 p-4 bg-white">
+            <ScrollArea className="flex-1 p-4 bg-white" viewportRef={messagesScrollRef}>
               <div className="space-y-4 min-h-full">
                 {messages.length > 0 ? (
                   messages.map((message) => {
@@ -555,7 +565,7 @@ export default function MessagesPage() {
             <div className="p-4 border-b sticky top-0 bg-white z-10">
               <h2 className="font-semibold text-gray-700">Conversations</h2>
             </div>
-            <ScrollArea className="h-[calc(100vh-180px)]">
+            <ScrollArea className="h-[calc(100vh-180px)]" viewportRef={conversationsScrollRef}>
               {loading ? (
                 <div className="space-y-4 p-4">
                   {[...Array(5)].map((_, i) => (
@@ -653,7 +663,7 @@ export default function MessagesPage() {
                 </div>
 
                 {/* Scrollable Messages */}
-                <ScrollArea className="flex-1 p-6">
+                <ScrollArea className="flex-1 p-6" viewportRef={messagesScrollRef}>
                   <div className="space-y-4 min-h-full">
                     {messages.length > 0 ? (
                       messages.map((message) => {
