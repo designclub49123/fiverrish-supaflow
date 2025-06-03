@@ -351,7 +351,6 @@ export default function MessagesPage() {
   };
 
   const selectConversation = (userId: string, username: string, fullName: string | null, avatarUrl: string | null) => {
-    // Capture the current scroll position of the conversations list
     const scrollPosition = conversationsScrollRef.current?.scrollTop || 0;
 
     setSelectedUser(userId);
@@ -365,7 +364,6 @@ export default function MessagesPage() {
       setShowConversations(false);
     }
 
-    // Restore the scroll position after the state update
     setTimeout(() => {
       if (conversationsScrollRef.current) {
         conversationsScrollRef.current.scrollTop = scrollPosition;
@@ -374,7 +372,6 @@ export default function MessagesPage() {
   };
 
   const scrollToBottom = () => {
-    // Only scroll the messages area to the bottom
     if (messagesScrollRef.current) {
       messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
     }
@@ -534,18 +531,20 @@ export default function MessagesPage() {
               </div>
             </ScrollArea>
 
-            {/* Message Input */}
-            <form onSubmit={handleSendMessage} className="p-4 border-t bg-white flex items-end space-x-2">
-              <Input
-                placeholder="Message..."
-                value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
-                className="flex-1 rounded-full border-gray-300"
-              />
-              <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-full h-10 w-10">
-                <Send className="h-4 w-4" />
-              </Button>
-            </form>
+            {/* Sticky Message Input */}
+            <div className="sticky bottom-0 bg-white border-t z-10">
+              <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-2">
+                <Input
+                  placeholder="Message..."
+                  value={newMessage}
+                  onChange={(e) => setNewMessage(e.target.value)}
+                  className="flex-1 rounded-full border-gray-300 focus:ring-blue-500"
+                />
+                <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-full h-10 w-10 bg-blue-500 hover:bg-blue-600">
+                  <Send className="h-4 w-4 text-white" />
+                </Button>
+              </form>
+            </div>
           </>
         )}
       </div>
@@ -632,11 +631,11 @@ export default function MessagesPage() {
           </div>
 
           {/* Messages area */}
-          <div className="flex flex-col bg-white">
+          <div className="flex flex-col bg-white h-full">
             {selectedUser && selectedUserDetails ? (
               <>
                 {/* Sticky Header */}
-                <div className="px-6 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-10 shadow-sm">
+                <div className="px-6 py-4 border-b flex items-center justify-between bg-white sticky top-0 z-20 shadow-sm">
                   <div className="flex items-center space-x-3">
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={selectedUserDetails.avatarUrl || ''} />
@@ -662,52 +661,57 @@ export default function MessagesPage() {
                   </div>
                 </div>
 
-                {/* Scrollable Messages */}
-                <ScrollArea className="flex-1 p-6" viewportRef={messagesScrollRef}>
-                  <div className="space-y-4 min-h-full">
-                    {messages.length > 0 ? (
-                      messages.map((message) => {
-                        const isCurrentUser = message.sender_id === currentUserId;
-                        return (
-                          <div key={message.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                            <div className={`max-w-[70%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
-                              <div
-                                className={`px-4 py-2 rounded-lg ${
-                                  isCurrentUser ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-900 rounded-bl-none'
-                                }`}
-                              >
-                                <p className="text-sm">{message.content}</p>
+                {/* Messages and Input Container */}
+                <div className="flex flex-col flex-1 overflow-hidden">
+                  {/* Scrollable Messages */}
+                  <ScrollArea className="flex-1 p-6" viewportRef={messagesScrollRef}>
+                    <div className="space-y-4 min-h-full">
+                      {messages.length > 0 ? (
+                        messages.map((message) => {
+                          const isCurrentUser = message.sender_id === currentUserId;
+                          return (
+                            <div key={message.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                              <div className={`max-w-[70%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
+                                <div
+                                  className={`px-4 py-2 rounded-lg ${
+                                    isCurrentUser ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-900 rounded-bl-none'
+                                  }`}
+                                >
+                                  <p className="text-sm">{message.content}</p>
+                                </div>
+                                <span
+                                  className={`text-xs text-gray-500 mt-1 block ${isCurrentUser ? 'text-right' : 'text-left'}`}
+                                >
+                                  {formatMessageDate(message.created_at)}
+                                </span>
                               </div>
-                              <span
-                                className={`text-xs text-gray-500 mt-1 block ${isCurrentUser ? 'text-right' : 'text-left'}`}
-                              >
-                                {formatMessageDate(message.created_at)}
-                              </span>
                             </div>
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <div className="flex items-center justify-center h-full">
-                        <p className="text-gray-500 text-sm">No messages yet. Start a conversation!</p>
-                      </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                  </div>
-                </ScrollArea>
+                          );
+                        })
+                      ) : (
+                        <div className="flex items-center justify-center h-full">
+                          <p className="text-gray-500 text-sm">No messages yet. Start a conversation!</p>
+                        </div>
+                      )}
+                      <div ref={messagesEndRef} />
+                    </div>
+                  </ScrollArea>
 
-                {/* Message Input */}
-                <form onSubmit={handleSendMessage} className="p-4 border-t flex items-center space-x-2">
-                  <Input
-                    placeholder="Type your message..."
-                    value={newMessage}
-                    onChange={(e) => setNewMessage(e.target.value)}
-                    className="flex-1 rounded-lg border-gray-300 focus:ring-blue-500"
-                  />
-                  <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-lg bg-blue-500 hover:bg-blue-600">
-                    <Send className="h-4 w-4 text-white" />
-                  </Button>
-                </form>
+                  {/* Sticky Message Input */}
+                  <div className="sticky bottom-0 bg-white border-t z-10">
+                    <form onSubmit={handleSendMessage} className="p-4 flex items-center space-x-2">
+                      <Input
+                        placeholder="Type your message..."
+                        value={newMessage}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        className="flex-1 rounded-full border-gray-300 focus:ring-blue-500"
+                      />
+                      <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-full h-10 w-10 bg-blue-500 hover:bg-blue-600">
+                        <Send className="h-4 w-4 text-white" />
+                      </Button>
+                    </form>
+                  </div>
+                </div>
               </>
             ) : (
               <div className="flex items-center justify-center h-full">
