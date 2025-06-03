@@ -118,11 +118,13 @@ export default function MessagesPage() {
 
   const handleDirectContact = async (contactId: string) => {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .select('username, full_name, avatar_url')
         .eq('id', contactId)
         .single();
+
+      if (error) throw error;
 
       if (profile) {
         setSelectedUser(contactId);
@@ -170,6 +172,8 @@ export default function MessagesPage() {
         return;
       }
 
+      console.log('Fetched messages:', messagesData); // Debugging log
+
       const conversationsMap = new Map<string, Conversation>();
 
       messagesData.forEach((message: any) => {
@@ -211,6 +215,8 @@ export default function MessagesPage() {
         (a, b) => new Date(b.lastMessageDate).getTime() - new Date(a.lastMessageDate).getTime()
       );
 
+      console.log('Sorted conversations:', sortedConversations); // Debugging log
+
       setConversations(sortedConversations);
 
       if (!selectedUser && sortedConversations.length > 0 && !isMobile) {
@@ -249,6 +255,8 @@ export default function MessagesPage() {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
+      console.log('Fetched messages for user:', userId, data); // Debugging log
 
       setMessages(data || []);
 
@@ -494,18 +502,18 @@ export default function MessagesPage() {
 
   // Desktop layout
   return (
-    <div className="h-screen flex flex-col bg-gray-100 p-4">
-      <div className="mb-4">
-        <h1 className="text-3xl font-bold tracking-tight">Messages</h1>
+    <div className="h-screen flex flex-col bg-gray-50 p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold tracking-tight">Messages</h1>
       </div>
-      <Card className="flex-1 overflow-hidden">
-        <div className="grid grid-cols-[350px_1fr] h-full">
+      <Card className="flex-1 overflow-hidden shadow-sm">
+        <div className="grid grid-cols-[300px_1fr] h-full">
           {/* Conversations list */}
           <div className="border-r bg-white">
             <div className="p-4 border-b sticky top-0 bg-white z-10">
-              <h2 className="font-semibold">Conversations</h2>
+              <h2 className="font-semibold text-gray-700">Conversations</h2>
             </div>
-            <ScrollArea className="h-[calc(100vh-120px)]">
+            <ScrollArea className="h-[calc(100vh-180px)]">
               {loading ? (
                 <div className="space-y-4 p-4">
                   {[...Array(5)].map((_, i) => (
@@ -523,8 +531,8 @@ export default function MessagesPage() {
                   {conversations.map((conversation) => (
                     <div
                       key={conversation.userId}
-                      className={`flex items-center space-x-3 px-4 py-3 cursor-pointer hover:bg-gray-50 transition-colors duration-200 relative ${
-                        selectedUser === conversation.userId ? 'bg-blue-50 border-r-2 border-blue-500' : ''
+                      className={`flex items-center space-x-3 px-4 py-3 cursor-pointer hover:bg-gray-100 transition-colors duration-200 relative ${
+                        selectedUser === conversation.userId ? 'bg-gray-100 border-r-2 border-blue-500' : ''
                       }`}
                       onClick={() =>
                         selectConversation(
@@ -563,7 +571,7 @@ export default function MessagesPage() {
               ) : (
                 <div className="flex items-center justify-center h-full p-4 text-center">
                   <div>
-                    <h3 className="font-medium">No conversations yet</h3>
+                    <h3 className="font-medium text-gray-700">No conversations yet</h3>
                     <p className="text-gray-500 text-sm mt-1">Messages will appear here when you start chatting</p>
                   </div>
                 </div>
@@ -585,25 +593,25 @@ export default function MessagesPage() {
                       </AvatarFallback>
                     </Avatar>
                     <div>
-                      <h3 className="font-medium">{selectedUserDetails.fullName || selectedUserDetails.username}</h3>
+                      <h3 className="font-medium text-gray-900">{selectedUserDetails.fullName || selectedUserDetails.username}</h3>
                       <p className="text-xs text-gray-500">@{selectedUserDetails.username}</p>
                     </div>
                   </div>
                   <div className="flex space-x-2">
                     <Button variant="ghost" size="icon">
-                      <Phone className="h-4 w-4" />
+                      <Phone className="h-4 w-4 text-gray-600" />
                     </Button>
                     <Button variant="ghost" size="icon">
-                      <Video className="h-4 w-4" />
+                      <Video className="h-4 w-4 text-gray-600" />
                     </Button>
                     <Button variant="ghost" size="icon">
-                      <MoreVertical className="h-4 w-4" />
+                      <MoreVertical className="h-4 w-4 text-gray-600" />
                     </Button>
                   </div>
                 </div>
 
                 {/* Scrollable Messages */}
-                <ScrollArea className="flex-1 p-4">
+                <ScrollArea className="flex-1 p-6">
                   <div className="space-y-4 min-h-full">
                     {messages.length > 0 ? (
                       messages.map((message) => {
@@ -612,8 +620,8 @@ export default function MessagesPage() {
                           <div key={message.id} className={`flex ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
                             <div className={`max-w-[70%] ${isCurrentUser ? 'order-2' : 'order-1'}`}>
                               <div
-                                className={`px-4 py-2 rounded-2xl ${
-                                  isCurrentUser ? 'bg-blue-500 text-white rounded-br-md' : 'bg-gray-100 text-gray-900 rounded-bl-md'
+                                className={`px-4 py-2 rounded-lg ${
+                                  isCurrentUser ? 'bg-blue-500 text-white rounded-br-none' : 'bg-gray-200 text-gray-900 rounded-bl-none'
                                 }`}
                               >
                                 <p className="text-sm">{message.content}</p>
@@ -642,17 +650,17 @@ export default function MessagesPage() {
                     placeholder="Type your message..."
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
-                    className="flex-1 rounded-full"
+                    className="flex-1 rounded-lg border-gray-300 focus:ring-blue-500"
                   />
-                  <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-full">
-                    <Send className="h-4 w-4" />
+                  <Button type="submit" size="icon" disabled={!newMessage.trim()} className="rounded-lg bg-blue-500 hover:bg-blue-600">
+                    <Send className="h-4 w-4 text-white" />
                   </Button>
                 </form>
               </>
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <h3 className="font-medium text-lg">Select a conversation</h3>
+                  <h3 className="font-medium text-gray-700 text-lg">Select a conversation</h3>
                   <p className="text-gray-500 max-w-xs mt-2">Choose a conversation from the list to start messaging</p>
                 </div>
               </div>
