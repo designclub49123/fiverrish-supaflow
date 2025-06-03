@@ -12,9 +12,11 @@ import { useNavigate } from 'react-router-dom';
 import { Clock, CheckCircle, AlertTriangle, XCircle, MessageSquare, DollarSign } from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
 
+type OrderStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'revision';
+
 interface Order {
   id: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'cancelled' | 'revision';
+  status: OrderStatus;
   price: number;
   created_at: string;
   delivery_date: string | null;
@@ -160,6 +162,7 @@ export default function OrdersPage() {
             
             return {
               ...order,
+              status: order.status as OrderStatus, // Type assertion
               freelancer: freelancerData || {
                 id: order.service.freelancer_id,
                 username: 'Unknown',
@@ -170,6 +173,7 @@ export default function OrdersPage() {
           }
           return {
             ...order,
+            status: order.status as OrderStatus, // Type assertion
             freelancer: {
               id: 'unknown',
               username: 'Unknown',
@@ -193,7 +197,7 @@ export default function OrdersPage() {
     }
   };
 
-  const updateOrderStatus = async (orderId: string, newStatus: string) => {
+  const updateOrderStatus = async (orderId: string, newStatus: OrderStatus) => {
     try {
       const { error } = await supabase
         .from('orders')
@@ -205,7 +209,7 @@ export default function OrdersPage() {
       setOrders(prev => 
         prev.map(order => 
           order.id === orderId 
-            ? { ...order, status: newStatus as any } 
+            ? { ...order, status: newStatus } 
             : order
         )
       );

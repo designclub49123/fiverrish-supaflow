@@ -59,7 +59,6 @@ export default function MessagesPage() {
   const navigate = useNavigate();
   const location = useLocation();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const messagesScrollRef = useRef<HTMLDivElement>(null);
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -455,7 +454,7 @@ export default function MessagesPage() {
 
             {/* Messages */}
             <div className="flex-1 overflow-hidden">
-              <ScrollArea className="h-full" viewportRef={messagesScrollRef}>
+              <ScrollArea className="h-full">
                 <div className="p-4 space-y-4 min-h-full">
                   {messages.length > 0 ? (
                     messages.map((message) => {
@@ -625,7 +624,7 @@ export default function MessagesPage() {
 
                 {/* Messages */}
                 <div className="flex-1 overflow-hidden">
-                  <ScrollArea className="h-full" viewportRef={messagesScrollRef}>
+                  <ScrollArea className="h-full">
                     <div className="p-6 space-y-4 min-h-full">
                       {messages.length > 0 ? (
                         messages.map((message) => {

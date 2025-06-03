@@ -11,7 +11,7 @@ import { Separator } from '@/components/ui/separator';
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/components/ui/use-toast';
 import { useNavigate } from 'react-router-dom';
-import { Pencil, Save, Award, Briefcase, Upload, Loader2 } from 'lucide-react';
+import { Pencil, Save, Award, Upload, Loader2 } from 'lucide-react';
 import { useFileUpload } from '@/hooks/useFileUpload';
 
 interface Profile {
@@ -137,7 +137,7 @@ const PortfolioProjects: React.FC = () => {
       <CardContent>
         <div className="flex justify-between items-center mb-6">
           <p className="text-muted-foreground">Add projects to highlight your skills and experience</p>
-          <Button onClick={() => navigate('/dashboard/projects/create')}>
+          <Button onClick={() => navigate('/dashboard/portfolio')}>
             Add New Project
           </Button>
         </div>
@@ -151,7 +151,7 @@ const PortfolioProjects: React.FC = () => {
               <Button
                 variant="link"
                 size="sm"
-                onClick={() => navigate('/dashboard/projects/create')}
+                onClick={() => navigate('/dashboard/portfolio')}
               >
                 Get Started
               </Button>
