@@ -34,7 +34,7 @@ export default function ForumPage() {
     },
     {
       id: 3,
-      title: "What's your favorite productivity tool?",
+      title: "What is your favorite productivity tool?",
       author: "ProductivityQueen",
       replies: 45,
       views: 678,
@@ -68,7 +68,7 @@ export default function ForumPage() {
     {
       id: 101,
       title: "New Feature: Enhanced Portfolio Options",
-      author: "Fiverrish Team",
+      author: "Grew up Team",
       replies: 15,
       views: 1245,
       lastActivity: "1 day ago",
@@ -78,7 +78,7 @@ export default function ForumPage() {
     {
       id: 102,
       title: "Upcoming Maintenance: July 15th",
-      author: "Fiverrish Team",
+      author: "Grew up Team",
       replies: 8,
       views: 986,
       lastActivity: "2 days ago",
